@@ -20,6 +20,7 @@ class VideoPlayer(
     private var currentPlaylist: Playlist? = null
     private var currentVideoIndex = 0
     private var videos: List<Video> = emptyList()
+    private var isPlayingVideo = false
     
     fun playPlaylist(playlist: Playlist) {
         currentPlaylist = playlist
@@ -43,6 +44,12 @@ class VideoPlayer(
     }
     
     private fun playCurrentVideo() {
+        // Check if we're already playing a video to prevent multiple calls
+        if (isPlayingVideo) {
+            Log.d(TAG, "Already playing a video, ignoring call to playCurrentVideo()")
+            return
+        }
+        
         if (currentVideoIndex >= videos.size) {
             // Start from the beginning when reaching the end
             currentVideoIndex = 0
@@ -62,6 +69,9 @@ class VideoPlayer(
         }
         
         try {
+            // Mark that we're starting to play a video
+            isPlayingVideo = true
+            
             // Use a proper file:// URI instead of a raw file path
             val uri = Uri.fromFile(file)
             Log.d(TAG, "Playing video: ${video.id}, URI: $uri")
@@ -72,12 +82,14 @@ class VideoPlayer(
             videoView.setOnCompletionListener {
                 // Play next video when current one finishes
                 Log.d(TAG, "Video completed: ${video.id}")
+                isPlayingVideo = false  // Reset flag when video completes
                 currentVideoIndex++
                 playCurrentVideo()
             }
             
             videoView.setOnErrorListener { _, what, extra ->
                 Log.e(TAG, "Video playback error: what=$what, extra=$extra, path=$videoPath")
+                isPlayingVideo = false  // Reset flag on error
                 currentVideoIndex++
                 playCurrentVideo()
                 true
@@ -92,6 +104,7 @@ class VideoPlayer(
         } catch (e: Exception) {
             Log.e(TAG, "Error playing video: ${e.message}")
             e.printStackTrace()
+            isPlayingVideo = false  // Reset flag on exception
             currentVideoIndex++
             playCurrentVideo()
         }
@@ -101,6 +114,9 @@ class VideoPlayer(
         if (videoView.isPlaying) {
             videoView.stopPlayback()
         }
+        // Reset the playing flag when stopping
+        isPlayingVideo = false
+        Log.d(TAG, "Video playback stopped")
     }
     
     companion object {

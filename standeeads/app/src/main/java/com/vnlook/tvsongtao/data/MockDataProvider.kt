@@ -10,13 +10,13 @@ object MockDataProvider {
             Video(
                 id = "video_01",
                 name = "Quảng Cáo A",
-                url = "https://www.sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+                url = "https://www.sample-videos.com/video321/mp4/720/big_buck_bunny_720p_30mb.mp4",
                 isDownloaded = false
             ),
             Video(
                 id = "video_02",
                 name = "Quảng Cáo B",
-                url = "https://www.sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4",
+                url = "https://www.sample-videos.com/video321/mp4/720/big_buck_bunny_720p_30mb.mp4",
                 isDownloaded = false
             )
         )

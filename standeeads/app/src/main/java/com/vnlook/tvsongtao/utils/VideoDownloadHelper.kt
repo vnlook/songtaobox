@@ -68,27 +68,81 @@ class VideoDownloadHelper(private val context: Context) {
      */
     fun getVideosToDownload(apiVideos: List<Video>, savedVideos: List<Video>): List<Video> {
         val result = mutableListOf<Video>()
+        val updatedVideos = mutableListOf<Video>()
         
         for (apiVideo in apiVideos) {
-            val savedVideo = savedVideos.find { it.id == apiVideo.id }
+            // First check if there's a video with the same ID
+            val savedVideoById = savedVideos.find { it.id == apiVideo.id }
             
-            if (savedVideo == null) {
-                // New video, needs downloading
-                result.add(apiVideo)
-            } else if (!savedVideo.isDownloaded || savedVideo.localPath.isNullOrEmpty()) {
-                // Existing video but not downloaded or missing local path
-                result.add(apiVideo)
-            } else {
-                // Check if the file exists at the specified path
-                val file = File(savedVideo.localPath!!)
-                if (!file.exists() || file.length() == 0L) {
-                    // File doesn't exist or is empty, needs downloading
+            // Then check if there's a video with the same URL (even if ID is different)
+            val savedVideoByUrl = if (savedVideoById == null) {
+                savedVideos.find { it.url == apiVideo.url && it.isDownloaded && !it.localPath.isNullOrEmpty() }
+            } else null
+            
+            when {
+                // Case 1: Found video with same ID and it's downloaded with valid path
+                savedVideoById != null && savedVideoById.isDownloaded && !savedVideoById.localPath.isNullOrEmpty() -> {
+                    val file = File(savedVideoById.localPath!!)
+                    if (file.exists() && file.length() > 0L) {
+                        // File exists and is valid, no need to download
+                        Log.d(TAG, "Video ${apiVideo.id} already downloaded at ${savedVideoById.localPath}")
+                        // Add to updated videos list with download status preserved
+                        updatedVideos.add(apiVideo.copy(isDownloaded = true, localPath = savedVideoById.localPath))
+                    } else {
+                        // File doesn't exist or is empty, needs downloading
+                        Log.d(TAG, "Video ${apiVideo.id} marked as downloaded but file missing, re-downloading")
+                        result.add(apiVideo)
+                    }
+                }
+                
+                // Case 2: Found video with same URL but different ID
+                savedVideoByUrl != null -> {
+                    val file = File(savedVideoByUrl.localPath!!)
+                    if (file.exists() && file.length() > 0L) {
+                        // File exists and is valid, reuse it
+                        Log.d(TAG, "Found video with same URL (${apiVideo.url}), reusing downloaded file at ${savedVideoByUrl.localPath}")
+                        // Add to updated videos list with download status and path from the matching URL video
+                        updatedVideos.add(apiVideo.copy(isDownloaded = true, localPath = savedVideoByUrl.localPath))
+                    } else {
+                        // File doesn't exist or is empty, needs downloading
+                        Log.d(TAG, "Found video with same URL but file missing, re-downloading")
+                        result.add(apiVideo)
+                    }
+                }
+                
+                // Case 3: No matching video found or video not downloaded
+                else -> {
+                    Log.d(TAG, "Video ${apiVideo.id} needs downloading")
                     result.add(apiVideo)
                 }
             }
         }
         
+        // Return videos that need downloading
+        if (updatedVideos.isNotEmpty()) {
+            // Update the status of videos that are already downloaded
+            updateVideoDownloadStatus(updatedVideos)
+        }
+        
         return result
+    }
+    
+    /**
+     * Updates the download status of videos in SharedPreferences
+     * 
+     * @param videos List of videos to update
+     */
+    private fun updateVideoDownloadStatus(videos: List<Video>) {
+        try {
+            val dataManager = com.vnlook.tvsongtao.data.DataManager(context)
+            for (video in videos) {
+                if (video.isDownloaded && !video.localPath.isNullOrEmpty()) {
+                    dataManager.updateVideoDownloadStatus(video.id, true, video.localPath)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating video download status: ${e.message}")
+        }
     }
     
     /**

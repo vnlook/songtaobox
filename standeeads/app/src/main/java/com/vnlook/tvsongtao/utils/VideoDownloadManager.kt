@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import androidx.core.content.ContextCompat
 import android.net.Uri
 import android.os.Environment
 import android.os.Handler
@@ -82,16 +83,26 @@ class VideoDownloadManager(private val context: Context) {
                 
                 // Get saved playlists from SharedPreferences
                 val savedPlaylists = dataManager.getPlaylists()
-                val savedVideos = dataManager.getVideos()
                 
-                // Save playlists from API/mock to SharedPreferences
-                dataManager.savePlaylists(mockData)
+                // Instead of overwriting videos, merge them to preserve download status
+                val mergedVideos = dataManager.mergeVideos(apiVideos)
+                
+                // Save the merged videos back to SharedPreferences
+                dataManager.saveVideos(mergedVideos)
+                
+                // Save playlists from API/mock to SharedPreferences only if they've changed
+                if (downloadHelper.checkIfPlaylistsNeedUpdate(mockData, savedPlaylists)) {
+                    Log.d(TAG, "Playlists have changed, updating SharedPreferences")
+                    dataManager.savePlaylists(mockData)
+                } else {
+                    Log.d(TAG, "Playlists haven't changed, keeping existing data")
+                }
                 
                 // Log the number of videos we need to check
                 Log.d(TAG, "Checking ${apiVideos.size} videos for download status")
                 
                 // Get list of videos that need downloading
-                val videosToDownload = downloadHelper.getVideosToDownload(apiVideos, savedVideos)
+                val videosToDownload = downloadHelper.getVideosToDownload(apiVideos, mergedVideos)
                 
                 // Log the videos that need downloading
                 Log.d(TAG, "Found ${videosToDownload.size} videos that need downloading")
@@ -99,28 +110,40 @@ class VideoDownloadManager(private val context: Context) {
                     Log.d(TAG, "Video to download: ${video.id} - ${video.name}")
                 }
                 
-                // Update UI on main thread
-                withContext(Dispatchers.Main) {
-                    if (videosToDownload.isNotEmpty()) {
-                        // Download videos one at a time
-                        downloadVideos(videosToDownload)
-                    } else {
-                        // All videos are already downloaded
-                        Log.d(TAG, "All videos are already downloaded")
-                        
-                        // Log the paths of all downloaded videos
-                        savedVideos.forEach { video ->
-                            if (video.isDownloaded && !video.localPath.isNullOrEmpty()) {
-                                Log.d(TAG, "Already downloaded video: ${video.id}, path: ${video.localPath}")
-                            }
-                        }
-                        
-                        notifyVideosReady()
+                // Check if all videos are already downloaded
+                if (videosToDownload.isEmpty()) {
+                    Log.d(TAG, "All videos are already downloaded, notifying UI")
+                    withContext(Dispatchers.Main) {
+                        downloadListener?.onAllDownloadsCompleted()
                     }
+                } else {
+                    // Start downloading videos
+                    Log.d(TAG, "Starting video downloads")
+                    totalDownloads = videosToDownload.size
+                    completedDownloads = 0
+                    
+                    // Register broadcast receiver for download completion
+                    if (!receiverRegistered) {
+                        ContextCompat.registerReceiver(
+                            context,
+                            downloadCompleteReceiver,
+                            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                            ContextCompat.RECEIVER_NOT_EXPORTED
+                        )
+                        receiverRegistered = true
+                    }
+                    
+                    // Start progress monitoring
+                    startProgressMonitoring()
+                    
+                    // Start downloading videos
+                    downloadVideos(videosToDownload)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing video download: ${e.message}")
                 e.printStackTrace()
+                // Just log the error since there's no onError method in the interface
+                // We could add a Toast message here if needed
             }
         }
     }
@@ -131,10 +154,11 @@ class VideoDownloadManager(private val context: Context) {
     fun downloadVideos(videos: List<Video>) {
         if (!receiverRegistered) {
             // Register broadcast receiver for download completion
-            context.registerReceiver(
+            ContextCompat.registerReceiver(
+                context,
                 downloadCompleteReceiver,
                 IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                Context.RECEIVER_NOT_EXPORTED
+                ContextCompat.RECEIVER_NOT_EXPORTED
             )
             receiverRegistered = true
         }
@@ -223,7 +247,13 @@ class VideoDownloadManager(private val context: Context) {
                         val cursor = downloadManager.query(query)
                         
                         if (cursor.moveToFirst()) {
-                            val status = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS))
+                            val statusColumnIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                            if (statusColumnIndex < 0) {
+                                Log.e(TAG, "Status column not found in cursor")
+                                cursor.close()
+                                return
+                            }
+                            val status = cursor.getInt(statusColumnIndex)
                             
                             if (status == DownloadManager.STATUS_SUCCESSFUL) {
                                 // Update video download status and local path
@@ -251,7 +281,12 @@ class VideoDownloadManager(private val context: Context) {
                                 }
                             } else if (status == DownloadManager.STATUS_FAILED) {
                                 // Log error
-                                val reason = cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_REASON))
+                                val reasonColumnIndex = cursor.getColumnIndex(DownloadManager.COLUMN_REASON)
+                                val reason = if (reasonColumnIndex >= 0) {
+                                    cursor.getInt(reasonColumnIndex)
+                                } else {
+                                    -1 // Unknown reason
+                                }
                                 Log.e(TAG, "Download failed for video $videoId. Reason code: $reason")
                                 
                                 // Remove download ID from tracking map
@@ -376,6 +411,7 @@ class VideoDownloadManager(private val context: Context) {
                         val bytesDownloadedColumnIndex = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
                         val totalBytesColumnIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
                         
+                        // Only proceed if both column indices are valid
                         if (bytesDownloadedColumnIndex >= 0 && totalBytesColumnIndex >= 0) {
                             val bytesDownloaded = cursor.getLong(bytesDownloadedColumnIndex)
                             val totalSize = cursor.getLong(totalBytesColumnIndex)

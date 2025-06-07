@@ -34,40 +34,96 @@ class DataManager(private val context: Context) {
         }
     }
 
+    /**
+     * Retrieves videos from SharedPreferences
+     * @return List of videos or empty list if none found
+     */
     fun getVideos(): List<Video> {
+        val videosJson = sharedPreferences.getString(KEY_VIDEOS, null)
+        if (videosJson.isNullOrEmpty()) {
+            Log.d(TAG, "No videos found in preferences")
+            return emptyList()
+        }
+        
         try {
-            val videosJson = sharedPreferences.getString(KEY_VIDEOS, null)
-            if (videosJson != null) {
-                try {
-                    val type = object : TypeToken<List<Video>>() {}.type
-                    val videos = gson.fromJson<List<Video>>(videosJson, type)
-                    if (videos != null && videos.isNotEmpty()) {
-                        Log.d(TAG, "Loaded ${videos.size} videos from preferences")
-                        return videos
-                    } else {
-                        Log.w(TAG, "Loaded empty video list from preferences")
-                    }
-                } catch (e: JsonSyntaxException) {
-                    Log.e(TAG, "Error parsing videos JSON: ${e.message}")
-                    // Clear corrupted data
-                    sharedPreferences.edit().remove(KEY_VIDEOS).apply()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error loading videos: ${e.message}")
-                    e.printStackTrace()
+            val type = object : TypeToken<List<Video>>() {}.type
+            val videos = gson.fromJson<List<Video>>(videosJson, type)
+            Log.d(TAG, "Loaded ${videos.size} videos from preferences")
+            return videos
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading videos from preferences: ${e.message}")
+            return emptyList()
+        }
+    }
+    
+    /**
+     * Merges new videos with existing videos, preserving download status
+     * 
+     * @param newVideos New videos from API/mock data
+     * @return Merged list of videos with preserved download status
+     */
+    fun mergeVideos(newVideos: List<Video>): List<Video> {
+        val existingVideos = getVideos()
+        val result = mutableListOf<Video>()
+        
+        // Create map for efficient lookups - prioritize URL matching
+        val existingByUrl = existingVideos.associateBy { it.url }
+        
+        // Track URLs in new videos for later cleanup
+        val newVideoUrls = newVideos.map { it.url }.toSet()
+        
+        // Process each new video
+        for (newVideo in newVideos) {
+            // Find existing video by URL (primary matching criteria)
+            val existingVideo = existingByUrl[newVideo.url]
+            
+            if (existingVideo != null && existingVideo.isDownloaded && !existingVideo.localPath.isNullOrEmpty()) {
+                // Check if the file actually exists
+                val file = java.io.File(existingVideo.localPath!!)
+                if (file.exists() && file.length() > 0) {
+                    // Keep download status and path
+                    result.add(newVideo.copy(isDownloaded = true, localPath = existingVideo.localPath))
+                    Log.d(TAG, "Preserved download status for video with URL ${newVideo.url}, path: ${existingVideo.localPath}")
+                } else {
+                    // File doesn't exist, reset download status
+                    result.add(newVideo)
+                    Log.d(TAG, "Reset download status for video with URL ${newVideo.url} because file doesn't exist")
                 }
             } else {
-                Log.d(TAG, "No videos found in preferences, using mock data")
+                // Not found or not downloaded, add as is
+                result.add(newVideo)
             }
-            
-            // Return mock data on first run or error
-            val mockVideos = MockDataProvider.getMockVideos()
-            saveVideos(mockVideos)
-            return mockVideos
-        } catch (e: Exception) {
-            Log.e(TAG, "Critical error in getVideos: ${e.message}")
-            e.printStackTrace()
-            // Return empty list as fallback
-            return emptyList()
+        }
+        
+        // Delete files for videos that are no longer in the new data
+        deleteUnusedVideoFiles(existingVideos, newVideoUrls)
+        
+        return result
+    }
+    
+    /**
+     * Deletes video files that are no longer needed
+     * 
+     * @param existingVideos List of videos from SharedPreferences
+     * @param newVideoUrls Set of URLs in the new video list
+     */
+    private fun deleteUnusedVideoFiles(existingVideos: List<Video>, newVideoUrls: Set<String>) {
+        for (existingVideo in existingVideos) {
+            if (!newVideoUrls.contains(existingVideo.url) && 
+                existingVideo.isDownloaded && 
+                !existingVideo.localPath.isNullOrEmpty()) {
+                
+                // This video is no longer needed, delete the file
+                val file = java.io.File(existingVideo.localPath!!)
+                if (file.exists()) {
+                    val deleted = file.delete()
+                    if (deleted) {
+                        Log.d(TAG, "Deleted unused video file: ${existingVideo.localPath}")
+                    } else {
+                        Log.e(TAG, "Failed to delete unused video file: ${existingVideo.localPath}")
+                    }
+                }
+            }
         }
     }
 
@@ -82,39 +138,24 @@ class DataManager(private val context: Context) {
         }
     }
 
+    /**
+     * Retrieves playlists from SharedPreferences
+     * @return List of playlists or empty list if none found
+     */
     fun getPlaylists(): List<Playlist> {
+        val playlistsJson = sharedPreferences.getString(KEY_PLAYLISTS, null)
+        if (playlistsJson.isNullOrEmpty()) {
+            Log.d(TAG, "No playlists found in preferences")
+            return emptyList()
+        }
+        
         try {
-            val playlistsJson = sharedPreferences.getString(KEY_PLAYLISTS, null)
-            if (playlistsJson != null) {
-                try {
-                    val type = object : TypeToken<List<Playlist>>() {}.type
-                    val playlists = gson.fromJson<List<Playlist>>(playlistsJson, type)
-                    if (playlists != null && playlists.isNotEmpty()) {
-                        Log.d(TAG, "Loaded ${playlists.size} playlists from preferences")
-                        return playlists
-                    } else {
-                        Log.w(TAG, "Loaded empty playlist list from preferences")
-                    }
-                } catch (e: JsonSyntaxException) {
-                    Log.e(TAG, "Error parsing playlists JSON: ${e.message}")
-                    // Clear corrupted data
-                    sharedPreferences.edit().remove(KEY_PLAYLISTS).apply()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error loading playlists: ${e.message}")
-                    e.printStackTrace()
-                }
-            } else {
-                Log.d(TAG, "No playlists found in preferences, using mock data")
-            }
-            
-            // Return mock data on first run or error
-            val mockPlaylists = MockDataProvider.getMockPlaylists()
-            savePlaylists(mockPlaylists)
-            return mockPlaylists
+            val type = object : TypeToken<List<Playlist>>() {}.type
+            val playlists = gson.fromJson<List<Playlist>>(playlistsJson, type)
+            Log.d(TAG, "Loaded ${playlists.size} playlists from preferences")
+            return playlists
         } catch (e: Exception) {
-            Log.e(TAG, "Critical error in getPlaylists: ${e.message}")
-            e.printStackTrace()
-            // Return empty list as fallback
+            Log.e(TAG, "Error loading playlists from preferences: ${e.message}")
             return emptyList()
         }
     }
