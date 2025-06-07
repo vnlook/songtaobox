@@ -1,6 +1,8 @@
 package com.vnlook.tvsongtao
 
+import android.app.ActivityOptions
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -210,7 +212,24 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private fun startMainActivity() {
         val intent = Intent(this, MainActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        startActivity(intent)
+        
+        // Use ActivityOptions for a more modern approach to transitions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            // Create ActivityOptions with custom animations
+            val options = ActivityOptions.makeCustomAnimation(
+                this,
+                R.anim.fade_in,
+                R.anim.fade_out
+            )
+            
+            // Start activity with animation options
+            startActivity(intent, options.toBundle())
+        } else {
+            // Fallback for older devices
+            startActivity(intent)
+            overridePendingTransition(R.anim.fade_in, R.anim.fade_out)
+        }
+        
         finish()
     }
     
