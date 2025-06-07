@@ -16,7 +16,7 @@
         android:theme="@style/Theme.StandeeAds">
 
         <activity
-            android:name=".ClockScreenActivity"
+            android:name=".DigitalClockActivity"
             android:exported="true"
             android:screenOrientation="landscape"
             android:configChanges="orientation|keyboardHidden|screenSize"

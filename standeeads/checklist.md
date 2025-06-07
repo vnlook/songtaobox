@@ -12,76 +12,30 @@
 
 ---
 
-## 📁 1. Quản lý Video
+✅ Lấy data từ mockDataProvider
+We get the mock playlists and videos from MockDataProvider in VideoDownloadManager.initializeVideoDownload
+✅ Compare với data lưu trong Sharepreferences
+We retrieve the saved playlists and videos from SharedPreferences to compare with the new data
+✅ Check video url ở data mới và data cũ: a. ✅ Nếu url tồn tại ở cả data mới và cũ, và isDownloaded ở data cũ = true thì update lại vào data mới isDownloaded và localPath
+We check if the video exists by ID or URL and preserve the download status and path if the file exists
+b. ✅ Nếu url có ở data mới và chưa có ở data cũ hoặc có nhưng chưa download thì giữ nguyên ở data mới
+We keep new videos as is if they don't exist in the old data or aren't downloaded yet
+c. ✅ Nếu url không có ở data mới và có ở data cũ thì remove file đã download ở data cũ
+I've just added this functionality to delete files that are no longer needed
+We track processed URLs and delete files for videos that aren't in the new data
+✅ Set lại Sharepreferences data mới
+We save the merged videos back to SharedPreferences
+✅ Dựa vào data mới lấy ra list url chưa download và tiến hành download
+We get the list of videos that need downloading and start the download process
+✅ Sau khi download tất cả hoàn tất, update lại localPath và isDownload = true vào data mới và save lại sharepreference
+We update the download status and local path in SharedPreferences after each download completes
 
-### ✅ Model Video
-```json
-{
-  "id": "video_01",
-  "name": "Quảng Cáo A",
-  "url": "https://example.com/videoA.mp4",
-  "isDownloaded": true
-}
-```
+✅ Lấy data từ mockDataProvider
+✅ Compare với data lưu trong Sharepreferences
+✅ Check video url ở data mới và data cũ: a. ✅ Nếu url tồn tại ở cả data mới và cũ, và isDownloaded ở data cũ = true thì update lại vào data mới isDownloaded và localPath
+✅ b. ✅ Nếu url có ở data mới và chưa có ở data cũ hoặc có nhưng chưa download thì giữ nguyên ở data mới
+✅ c. ✅ Nếu url không có ở data mới và có ở data cũ thì remove file đã download ở data cũ
+✅ Set lại Sharepreferences data mới
+✅ Dựa vào data mới lấy ra list url chưa download và tiến hành download
+✅ Sau khi download tất cả hoàn tất, update lại localPath và isDownload = true vào data mới và save lại sharepreference
 
-### ✅ Lưu trữ
-- Dùng `SharedPreferences` (dưới dạng chuỗi JSON).
-- Dùng thư viện `Gson` để convert JSON ↔️ List<Video>.
-
----
-
-## 📁 2. Model Playlist
-
-### ✅ Cấu trúc dữ liệu Playlist
-```json
-{
-  "id": "playlist_01",
-  "startTime": "08:00",
-  "endTime": "10:00",
-  "videoIds": ["video_01", "video_02"]
-}
-```
-
-- Giờ định dạng `HH:mm`
-- Lưu danh sách dưới dạng JSON trong SharedPreferences.
-
----
-
-## 🔁 3. Luồng hoạt động app
-
-### 1. Khi mở app
-- Kiểm tra các video trong playlist đã được download chưa.
-- Nếu chưa download thì download lưu vào 1 đường dẫn theo `getExternalFilesDir(Environment.DIRECTORY_MOVIES)`.
-- Lưu lại dữ liệu model Videos và Playlist vào SharedPreferences
-- Đọc video & playlist từ SharedPreferences (hoặc assets nếu lần đầu).
-- Với mỗi video chưa được tải (`isDownloaded == false`) thì:
-  - Gửi request tải bằng `DownloadManager`.
-  - Đặt đích lưu trong `getExternalFilesDir(Environment.DIRECTORY_MOVIES)`.
-
-### 2. Phát video theo playlist sử dụng VideoView và load full màn hình
-- Lấy giờ hiện tại bằng `LocalTime.now()` (API 26+).
-- So sánh với `startTime` và `endTime` của mỗi playlist:
-```kotlin
-val now = LocalTime.now()
-val start = LocalTime.parse(playlist.startTime)
-val end = LocalTime.parse(playlist.endTime)
-if (now.isAfter(start) && now.isBefore(end)) {
-    // Phát danh sách video
-}
-```
-
----
-
-## ▶️ 4. Phát video bằng `VideoView`
-
-```kotlin
-fun playVideoList(videoView: VideoView, videoPaths: List<String>, index: Int = 0) {
-    if (index >= videoPaths.size) return
-
-    videoView.setVideoPath(videoPaths[index])
-    videoView.setOnCompletionListener {
-        playVideoList(videoView, videoPaths, index + 1)
-    }
-    videoView.start()
-}
-```
