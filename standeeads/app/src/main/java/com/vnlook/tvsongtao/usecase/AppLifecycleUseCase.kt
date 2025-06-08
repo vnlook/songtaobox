@@ -5,6 +5,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.widget.VideoView
+import androidx.media3.ui.PlayerView
 import com.vnlook.tvsongtao.MainActivity
 import com.vnlook.tvsongtao.StandeeAdsApplication
 
@@ -13,7 +14,7 @@ import com.vnlook.tvsongtao.StandeeAdsApplication
  */
 class AppLifecycleUseCase(
     private val activity: MainActivity,
-    private val videoView: VideoView,
+    private val videoView: PlayerView,
     private val uiUseCase: UIUseCase,
     private val videoUseCase: VideoUseCase
 ) {

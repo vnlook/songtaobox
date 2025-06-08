@@ -3,7 +3,9 @@ package com.vnlook.tvsongtao.usecase
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.widget.VideoView
+//import android.widget.VideoView
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.vnlook.tvsongtao.MainActivity
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.utils.PlaylistScheduler
@@ -23,7 +25,7 @@ import java.util.TimerTask
  */
 class VideoUseCase(
     private val activity: MainActivity,
-    private val videoView: VideoView,
+    private val videoView: PlayerView,
     private val uiUseCase: UIUseCase,
     private val dataUseCase: DataUseCase
 ) : VideoDownloadManagerListener {

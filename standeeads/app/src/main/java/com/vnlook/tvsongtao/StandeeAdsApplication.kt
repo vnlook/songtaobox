@@ -6,8 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import com.vnlook.tvsongtao.repository.DeviceRepository
 import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
+import com.vnlook.tvsongtao.usecase.PermissionUseCase
 import com.vnlook.tvsongtao.utils.ChangelogChecker
 import com.vnlook.tvsongtao.utils.ChangelogSchedulerJob
 import com.vnlook.tvsongtao.utils.DeviceInfoUtil
@@ -45,6 +47,9 @@ class StandeeAdsApplication : Application() {
         
         // Set up global error handler
         setupUncaughtExceptionHandler()
+        
+        // Check permissions at application level
+        checkAppPermissions()
         
         // Register or update device info
         registerDeviceInfo()
@@ -188,6 +193,24 @@ class StandeeAdsApplication : Application() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to cleanup old crash logs: ${e.message}")
+        }
+    }
+    
+    /**
+     * Check app permissions at application level
+     * This ensures permissions are prepared as soon as the app starts
+     * Note: Actual permission requests will happen in activities
+     */
+    private fun checkAppPermissions() {
+        try {
+            Log.d(TAG, "Preparing app permissions at application level")
+            // We can't directly request permissions at the Application level
+            // as that requires an Activity context, but we can log the current status
+            // The actual permission requests will happen in MainActivity
+            Log.d(TAG, "Permission status will be checked in MainActivity")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking permissions: ${e.message}")
+            e.printStackTrace()
         }
     }
 }

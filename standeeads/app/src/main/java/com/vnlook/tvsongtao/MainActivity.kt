@@ -10,6 +10,7 @@ import android.widget.Toast
 import android.widget.VideoView
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.media3.ui.PlayerView
 import com.vnlook.tvsongtao.usecase.*
 import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
 
@@ -20,7 +21,7 @@ import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
 class MainActivity : AppCompatActivity() {
 
     // UI Components
-    private lateinit var videoView: VideoView
+    private lateinit var videoView: PlayerView
     private lateinit var tvStatus: TextView
     private lateinit var tvTitle: TextView
     private lateinit var tvPercentage: TextView
@@ -62,7 +63,7 @@ class MainActivity : AppCompatActivity() {
             setContentView(R.layout.activity_main)
 
             // Find UI components
-            videoView = findViewById(R.id.videoView)
+            videoView = findViewById(R.id.playerView)
             tvStatus = findViewById(R.id.tvStatus)
             tvTitle = findViewById(R.id.tvTitle)
             tvPercentage = findViewById(R.id.tvPercentage)
@@ -77,6 +78,10 @@ class MainActivity : AppCompatActivity() {
             
             // Initialize UI
             uiUseCase.initializeUI(videoView, tvStatus, tvTitle, tvPercentage, loadingContainer, progressBar)
+            
+            // Check permissions immediately in the main thread
+            // This ensures permissions are requested as soon as the activity is created
+            permissionUseCase.checkAndRequestPermissions()
             
             // Start keep-alive mechanism
             appLifecycleUseCase.startKeepAlive()
@@ -142,9 +147,14 @@ class MainActivity : AppCompatActivity() {
         // Initialize video managers
         videoUseCase.initializeManagers()
         
-        // Check permissions and load videos if needed
+        // Load videos if permissions are granted
+        // Note: We've already checked permissions in onCreate, but we check again here
+        // in case permissions were granted between onCreate and now
         if (permissionUseCase.checkAndRequestPermissions()) {
+            Log.d("MainActivity", "Permissions granted, loading videos")
             videoUseCase.checkAndLoadVideos()
+        } else {
+            Log.d("MainActivity", "Permissions not granted yet, videos will be loaded after permission grant")
         }
     }
 

@@ -19,6 +19,7 @@ import com.vnlook.tvsongtao.repository.ChangelogRepositoryImpl
 import com.vnlook.tvsongtao.repository.DeviceRepository
 import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import com.vnlook.tvsongtao.usecase.DataUseCase
+import com.vnlook.tvsongtao.usecase.PermissionUseCase
 import com.vnlook.tvsongtao.utils.ChangelogUtil
 import com.vnlook.tvsongtao.utils.DeviceInfoUtil
 import com.vnlook.tvsongtao.utils.PlaylistScheduler
@@ -47,13 +48,13 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private lateinit var changelogUtil: ChangelogUtil
     private lateinit var deviceRepository: DeviceRepository
     private lateinit var deviceInfoUtil: DeviceInfoUtil
+    private lateinit var permissionUseCase: PermissionUseCase
     private val handler = Handler(Looper.getMainLooper())
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         // Set full screen
         window.setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -71,7 +72,8 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         
         // Configure TextClock explicitly
         val textClock = findViewById<TextClock>(R.id.textClock)
-        textClock.format12Hour = "hh:mm:ss a"
+//        textClock.format12Hour = "hh:mm:ss a"
+        textClock.format12Hour = null
         textClock.format24Hour = "HH:mm:ss"
         textClock.visibility = View.VISIBLE
         
@@ -92,8 +94,18 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         deviceRepository = DeviceRepositoryImpl(this)
         deviceInfoUtil = DeviceInfoUtil(this, deviceRepository)
         
+        // Initialize permission use case
+        permissionUseCase = PermissionUseCase(this)
+        
         // Log that we're starting the activity
         Log.d(TAG, "Digital clock screen started")
+        
+        // Check permissions immediately
+        if (permissionUseCase.checkAndRequestPermissions()) {
+            Log.d(TAG, "All permissions granted in DigitalClockActivity")
+        } else {
+            Log.d(TAG, "Some permissions not granted in DigitalClockActivity, requested")
+        }
         
         // Register device info if needed
         registerDeviceInfo()
@@ -329,6 +341,18 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         }
         
         finish()
+    }
+    
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        if (::permissionUseCase.isInitialized && permissionUseCase.handlePermissionResult(requestCode, permissions, grantResults)) {
+            Log.d(TAG, "Permission granted in DigitalClockActivity")
+            // Permissions granted, continue with normal flow
+            checkCompareAndDownloadPlaylists()
+        } else {
+            Log.d(TAG, "Permission denied in DigitalClockActivity")
+        }
     }
     
     override fun onDestroy() {

@@ -1,10 +1,13 @@
 package com.vnlook.tvsongtao.utils
 
 import android.content.Context
-import android.media.MediaPlayer
 import android.net.Uri
 import android.util.Log
-import android.widget.VideoView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.vnlook.tvsongtao.data.DataManager
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.model.Video
@@ -12,7 +15,7 @@ import java.io.File
 
 class VideoPlayer(
     private val context: Context,
-    private val videoView: VideoView,
+    private val playerView: PlayerView,
     private val onPlaylistFinished: () -> Unit
 ) {
     private val dataManager = DataManager(context)
@@ -21,104 +24,106 @@ class VideoPlayer(
     private var currentVideoIndex = 0
     private var videos: List<Video> = emptyList()
     private var isPlayingVideo = false
-    
+
+    private val player: ExoPlayer = ExoPlayer.Builder(context).build()
+
+    init {
+        playerView.player = player
+
+        // Gắn listener cho trạng thái phát
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    Log.d(TAG, "Video completed")
+                    isPlayingVideo = false
+                    currentVideoIndex++
+                    playCurrentVideo()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e(TAG, "Playback error: ${error.message}")
+                isPlayingVideo = false
+                currentVideoIndex++
+                playCurrentVideo()
+            }
+        })
+    }
+
     fun playPlaylist(playlist: Playlist) {
         currentPlaylist = playlist
         videos = getVideosForPlaylist(playlist)
-        
+
         if (videos.isEmpty()) {
             Log.d(TAG, "No videos available to play in playlist ${playlist.id}")
             onPlaylistFinished()
             return
         }
-        
+
         currentVideoIndex = 0
         playCurrentVideo()
     }
-    
+
     private fun getVideosForPlaylist(playlist: Playlist): List<Video> {
         val allVideos = dataManager.getVideos()
         return allVideos.filter { video ->
             video.isDownloaded && playlist.videoIds.contains(video.id)
         }
     }
-    
+
     private fun playCurrentVideo() {
-        // Check if we're already playing a video to prevent multiple calls
         if (isPlayingVideo) {
             Log.d(TAG, "Already playing a video, ignoring call to playCurrentVideo()")
             return
         }
-        
+
         if (currentVideoIndex >= videos.size) {
-            // Start from the beginning when reaching the end
             currentVideoIndex = 0
             onPlaylistFinished()
             return
         }
-        
+
         val video = videos[currentVideoIndex]
         val videoPath = downloadHelper.getVideoDownloadPath(video.url)
         val file = File(videoPath)
-        
+
         if (!file.exists()) {
             Log.e(TAG, "Video file not found: $videoPath")
             currentVideoIndex++
             playCurrentVideo()
             return
         }
-        
+
         try {
-            // Mark that we're starting to play a video
             isPlayingVideo = true
-            
-            // Use a proper file:// URI instead of a raw file path
             val uri = Uri.fromFile(file)
             Log.d(TAG, "Playing video: ${video.id}, URI: $uri")
-            
-            // Use setVideoURI instead of setVideoPath
-            videoView.setVideoURI(uri)
-            
-            videoView.setOnCompletionListener {
-                // Play next video when current one finishes
-                Log.d(TAG, "Video completed: ${video.id}")
-                isPlayingVideo = false  // Reset flag when video completes
-                currentVideoIndex++
-                playCurrentVideo()
-            }
-            
-            videoView.setOnErrorListener { _, what, extra ->
-                Log.e(TAG, "Video playback error: what=$what, extra=$extra, path=$videoPath")
-                isPlayingVideo = false  // Reset flag on error
-                currentVideoIndex++
-                playCurrentVideo()
-                true
-            }
-            
-            videoView.setOnPreparedListener { mp ->
-                Log.d(TAG, "Video prepared: ${video.id}")
-                mp.isLooping = false
-                videoView.start()
-            }
-            
+
+            val mediaItem = MediaItem.fromUri(uri)
+            player.setMediaItem(mediaItem)
+            player.prepare()
+            player.play()
+
         } catch (e: Exception) {
             Log.e(TAG, "Error playing video: ${e.message}")
             e.printStackTrace()
-            isPlayingVideo = false  // Reset flag on exception
+            isPlayingVideo = false
             currentVideoIndex++
             playCurrentVideo()
         }
     }
-    
+
     fun stop() {
-        if (videoView.isPlaying) {
-            videoView.stopPlayback()
-        }
-        // Reset the playing flag when stopping
+        player.stop()
         isPlayingVideo = false
         Log.d(TAG, "Video playback stopped")
     }
-    
+
+    fun release() {
+        player.release()
+        Log.d(TAG, "ExoPlayer released")
+    }
+
     companion object {
         private const val TAG = "VideoPlayer"
     }
