@@ -25,7 +25,7 @@ class ChangelogChecker(private val context: Context) {
     
     companion object {
         // For testing, check every 15 seconds
-        private const val CHECK_INTERVAL_MS = 15 * 1000L
+        private const val CHECK_INTERVAL_MS = 30 * 60 * 1000L
         
         // Singleton instance
         @Volatile
