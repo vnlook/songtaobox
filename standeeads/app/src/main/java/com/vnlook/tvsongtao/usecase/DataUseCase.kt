@@ -5,6 +5,10 @@ import android.util.Log
 import com.vnlook.tvsongtao.data.DataManager
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.model.Video
+import com.vnlook.tvsongtao.repository.PlaylistRepository
+import com.vnlook.tvsongtao.repository.PlaylistRepositoryImpl
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * UseCase responsible for data operations
@@ -12,17 +16,23 @@ import com.vnlook.tvsongtao.model.Video
 class DataUseCase(private val context: Context) {
     
     private lateinit var dataManager: DataManager
+    private lateinit var playlistRepository: PlaylistRepository
+    private val TAG = "DataUseCase"
     
     /**
-     * Initialize data manager
+     * Initialize data manager and repositories
      */
     fun initialize() {
         try {
             if (!::dataManager.isInitialized) {
                 dataManager = DataManager(context)
             }
+            
+            if (!::playlistRepository.isInitialized) {
+                playlistRepository = PlaylistRepositoryImpl(context)
+            }
         } catch (e: Exception) {
-            Log.e("DataUseCase", "Error initializing data manager: ${e.message}")
+            Log.e(TAG, "Error initializing data manager or repositories: ${e.message}")
             throw e
         }
     }
@@ -44,18 +54,21 @@ class DataUseCase(private val context: Context) {
     }
     
     /**
-     * Get playlists from data manager
+     * Get playlists from repository
+     * This is a suspend function that must be called from a coroutine
      */
-    fun getPlaylists(): List<Playlist> {
+    suspend fun getPlaylists(): List<Playlist> = withContext(Dispatchers.IO) {
         try {
-            if (!::dataManager.isInitialized) {
+            if (!::playlistRepository.isInitialized) {
                 initialize()
             }
-            return dataManager.getPlaylists()
+            playlistRepository.getPlaylists()
         } catch (e: Exception) {
-            Log.e("DataUseCase", "Error getting playlists: ${e.message}")
+            Log.e(TAG, "Error getting playlists: ${e.message}")
             e.printStackTrace()
-            return emptyList()
+            emptyList()
         }
     }
+    
+
 }

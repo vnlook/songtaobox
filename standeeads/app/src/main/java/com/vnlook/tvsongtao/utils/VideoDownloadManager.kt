@@ -12,8 +12,12 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.vnlook.tvsongtao.data.DataManager
-import com.vnlook.tvsongtao.data.MockDataProvider
+import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.model.Video
+import com.vnlook.tvsongtao.repository.PlaylistRepository
+import com.vnlook.tvsongtao.repository.PlaylistRepositoryImpl
+import com.vnlook.tvsongtao.repository.VNLApiClient
+import com.vnlook.tvsongtao.repository.VNLApiResponseParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -21,6 +25,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 class VideoDownloadManager(private val context: Context) {
+    private val playlistRepository: PlaylistRepository = PlaylistRepositoryImpl(context)
 
     companion object {
         private const val TAG = "VideoDownloadManager"
@@ -68,15 +73,36 @@ class VideoDownloadManager(private val context: Context) {
 
         coroutineScope.launch {
             try {
-                val mockData = MockDataProvider.getMockPlaylists()
-                val apiVideos = MockDataProvider.getMockVideos()
+                Log.d(TAG, "Making direct API call to VNL API endpoint")
+                // Get playlists directly from API
+                val playlists = playlistRepository.getPlaylists()
+                Log.d(TAG, "Successfully retrieved ${playlists.size} playlists from API")
+                
+                // Get videos directly from API
+                val apiVideos: List<Video>
+                val apiResponse = VNLApiClient.getPlaylists()
+                
+                if (!apiResponse.isNullOrEmpty()) {
+                    // Parse videos from API response
+                    val (_, videos) = VNLApiResponseParser.parseApiResponse(apiResponse)
+                    apiVideos = videos
+                    Log.d(TAG, "Retrieved ${apiVideos.size} videos directly from API")
+                } else {
+                    Log.w(TAG, "API call failed or returned empty response, using empty video list")
+                    apiVideos = emptyList()
+                }
+                
+                // Get saved data from DataManager
                 val savedPlaylists = dataManager.getPlaylists()
+                
+                // Merge and save videos
                 val mergedVideos = dataManager.mergeVideos(apiVideos)
                 dataManager.saveVideos(mergedVideos)
-
-                if (downloadHelper.checkIfPlaylistsNeedUpdate(mockData, savedPlaylists)) {
+                
+                // Check if playlists need update and save them if needed
+                if (downloadHelper.checkIfPlaylistsNeedUpdate(playlists, savedPlaylists)) {
                     Log.d(TAG, "Playlists have changed, updating SharedPreferences")
-                    dataManager.savePlaylists(mockData)
+                    dataManager.savePlaylists(playlists)
                 } else {
                     Log.d(TAG, "Playlists haven't changed, keeping existing data")
                 }
@@ -104,6 +130,9 @@ class VideoDownloadManager(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "Error initializing video download: ${e.message}")
                 e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    downloadListener?.onAllDownloadsCompleted()
+                }
             } finally {
                 isInitializing = false
             }

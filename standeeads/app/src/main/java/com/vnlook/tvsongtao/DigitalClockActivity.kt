@@ -18,6 +18,10 @@ import com.vnlook.tvsongtao.usecase.DataUseCase
 import com.vnlook.tvsongtao.utils.PlaylistScheduler
 import com.vnlook.tvsongtao.utils.VideoDownloadManager
 import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,6 +39,7 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private lateinit var playlistScheduler: PlaylistScheduler
     private val handler = Handler(Looper.getMainLooper())
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
+    private val coroutineScope = CoroutineScope(Dispatchers.Main)
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -157,34 +162,36 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     }
     
     override fun onAllDownloadsCompleted() {
-        runOnUiThread {
-            Log.d(TAG, "All downloads completed")
-            
-            // Check if there are any playlists to play
-            val playlists = dataUseCase.getPlaylists()
-            
-            if (playlists.isNotEmpty()) {
-                // Use PlaylistScheduler to check if there's a valid playlist for the current time
-                val currentPlaylist = playlistScheduler.getCurrentPlaylist(playlists)
+        Log.d(TAG, "All downloads completed")
+        
+        // Use coroutines to get playlists
+        coroutineScope.launch {
+            try {
+                // Check if there are any playlists to play
+                val playlists = dataUseCase.getPlaylists()
                 
-                if (currentPlaylist != null) {
-                    Log.d(TAG, "Found valid playlist for current time: ${currentPlaylist.id}, transitioning to video playback")
-                    // Wait a moment before starting MainActivity
-                    handler.postDelayed({
-                        startMainActivity()
-                    }, 1000)
-                } else {
-                    Log.d(TAG, "No playlist scheduled for current time, staying on digital clock screen")
-                    // No playlist scheduled for current time, stay on the clock screen
-                    
-                    // Schedule a check in 1 minute to see if a new playlist should start
-//                    handler.postDelayed({
-//                        checkForPlaylists()
-//                    }, 60000) // Check again in 1 minute
+                withContext(Dispatchers.Main) {
+                    if (playlists.isNotEmpty()) {
+                        // Use PlaylistScheduler to check if there's a valid playlist for the current time
+                        val currentPlaylist = playlistScheduler.getCurrentPlaylist(playlists)
+                        
+                        if (currentPlaylist != null) {
+                            Log.d(TAG, "Found valid playlist for current time: ${currentPlaylist.id}, transitioning to video playback")
+                            // Wait a moment before starting MainActivity
+                            handler.postDelayed({
+                                startMainActivity()
+                            }, 1000)
+                        } else {
+                            Log.d(TAG, "No playlist scheduled for current time, staying on digital clock screen")
+                            // No playlist scheduled for current time, stay on the clock screen
+                        }
+                    } else {
+                        Log.d(TAG, "No playlists found, staying on digital clock screen")
+                        // No playlists to play, stay on the clock screen
+                    }
                 }
-            } else {
-                Log.d(TAG, "No playlists found, staying on digital clock screen")
-                // No playlists to play, stay on the clock screen
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting playlists: ${e.message}")
             }
         }
     }

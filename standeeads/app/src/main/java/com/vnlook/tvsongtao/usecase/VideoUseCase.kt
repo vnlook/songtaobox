@@ -10,6 +10,10 @@ import com.vnlook.tvsongtao.utils.PlaylistScheduler
 import com.vnlook.tvsongtao.utils.VideoDownloadManager
 import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
 import com.vnlook.tvsongtao.utils.VideoPlayer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalTime
 import java.util.Timer
 import java.util.TimerTask
@@ -31,6 +35,7 @@ class VideoUseCase(
     private val handler = Handler(Looper.getMainLooper())
     private var isDownloadComplete = false
     private var videosLoaded = false
+    private val coroutineScope = CoroutineScope(Dispatchers.Main)
     
     /**
      * Initialize video managers
@@ -89,37 +94,39 @@ class VideoUseCase(
                 videoDownloadManager.setDownloadListener(this)
             }
             
-            // Load data in a background thread
-            Thread {
+            // Load data using coroutines
+            coroutineScope.launch {
                 try {
-                    // Load videos and playlists from data manager
+                    // Load videos and playlists from data manager using suspend functions
                     val videos = dataUseCase.getVideos()
+                    // Use suspend function for playlists
                     val playlists = dataUseCase.getPlaylists()
                     
                     Log.d("VideoUseCase", "Loaded ${videos.size} videos and ${playlists.size} playlists")
                     
                     // Start downloading videos
                     if (videos.isNotEmpty()) {
-                        videoDownloadManager.downloadVideos(videos)
+                        withContext(Dispatchers.Main) {
+                            videoDownloadManager.downloadVideos(videos)
+                        }
                     } else {
                         Log.w("VideoUseCase", "No videos found to download")
-                        activity.runOnUiThread {
-                            uiUseCase.showStatus("Không tìm thấy video nào")
+                        withContext(Dispatchers.Main) {
+                            onAllDownloadsCompleted()
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e("VideoUseCase", "Error loading videos: ${e.message}")
+                    Log.e("VideoUseCase", "Error loading data: ${e.message}")
                     e.printStackTrace()
-                    
-                    activity.runOnUiThread {
+                    withContext(Dispatchers.Main) {
                         uiUseCase.showStatus("Lỗi tải dữ liệu: ${e.message}")
                     }
                 }
-            }.start()
+            }
         } catch (e: Exception) {
             Log.e("VideoUseCase", "Error in checkAndLoadVideos: ${e.message}")
             e.printStackTrace()
-            uiUseCase.showStatus("Lỗi tải dữ liệu: ${e.message}")
+            uiUseCase.showStatus("Lỗi tải dữ liệu video")
         }
     }
     
@@ -146,69 +153,103 @@ class VideoUseCase(
      */
     fun checkAndPlayCurrentPlaylist() {
         try {
-            Log.d("VideoUseCase", "Checking for current playlist")
+            Log.d("VideoUseCase", "Checking current playlist")
             
-            // Initialize managers if not already done
-            if (!::playlistScheduler.isInitialized) {
-                playlistScheduler = PlaylistScheduler()
-            }
+            // Get current time
+            val currentTime = LocalTime.now()
             
-            Log.d("VideoUseCase", "checkAndPlayCurrentPlaylist called, isDownloadComplete=$isDownloadComplete")
-            
-            if (!isDownloadComplete) {
-                // Don't try to play videos until downloads are complete
-                Log.d("VideoUseCase", "Downloads not complete yet, not playing videos")
-                uiUseCase.showStatus("Đang chờ tải xong video...")
-                return
-            }
-            
-            val playlists = dataUseCase.getPlaylists()
-            Log.d("VideoUseCase", "Got ${playlists.size} playlists from dataManager")
-            
-            val currentPlaylist = playlistScheduler.getCurrentPlaylist(playlists)
-            Log.d("VideoUseCase", "Current playlist: ${currentPlaylist?.id ?: "none"}")
-
-            if (currentPlaylist != null) {
-                Log.d("VideoUseCase", "Found playlist to play: ${currentPlaylist.id}")
-                
-                // Initialize video player if not already done
-                if (!::videoPlayer.isInitialized) {
-                    videoPlayer = VideoPlayer(activity, videoView) {
-                        // When playlist finishes, check again after a short delay
-                        handler.postDelayed({ 
-                            try {
-                                checkAndPlayCurrentPlaylist() 
-                            } catch (e: Exception) {
-                                Log.e("VideoUseCase", "Error in playlist callback: ${e.message}")
-                                e.printStackTrace()
-                            }
-                        }, 1000)
+            // Use coroutines to get playlists
+            coroutineScope.launch {
+                try {
+                    // Get playlists from data manager using suspend function
+                    val playlists = dataUseCase.getPlaylists()
+                    
+                    if (playlists.isEmpty()) {
+                        Log.w("VideoUseCase", "No playlists found")
+                        return@launch
                     }
-                }
-                
-                activity.runOnUiThread {
-                    try {
-                        // Hide loading UI
-                        uiUseCase.hideLoading(videoView)
-                        
-                        // Play the playlist
-                        Log.d("VideoUseCase", "Starting to play playlist: ${currentPlaylist.id}")
-                        videoPlayer.playPlaylist(currentPlaylist)
-                    } catch (e: Exception) {
-                        Log.e("VideoUseCase", "Error updating UI in checkAndPlayCurrentPlaylist: ${e.message}")
-                        e.printStackTrace()
+                    
+                    // Initialize managers if not already done
+                    if (!::playlistScheduler.isInitialized) {
+                        playlistScheduler = PlaylistScheduler()
                     }
-                }
-            } else {
-                activity.runOnUiThread {
-                    try {
-                        if (::videoPlayer.isInitialized) {
-                            videoPlayer.stop()
+                    
+                    Log.d("VideoUseCase", "checkAndPlayCurrentPlaylist called, isDownloadComplete=$isDownloadComplete")
+                    
+                    if (!isDownloadComplete) {
+                        // Don't try to play videos until downloads are complete
+                        Log.d("VideoUseCase", "Downloads not complete yet, not playing videos")
+                        withContext(Dispatchers.Main) {
+                            uiUseCase.showStatus("Đang chờ tải xong video...")
                         }
-                        uiUseCase.showStatus("Không có playlist nào cần phát vào lúc ${LocalTime.now()}")
-                    } catch (e: Exception) {
-                        Log.e("VideoUseCase", "Error handling no playlist case: ${e.message}")
+                        return@launch
                     }
+                    
+                    val currentPlaylist = playlistScheduler.getCurrentPlaylist(playlists)
+                    Log.d("VideoUseCase", "Current playlist: ${currentPlaylist?.id ?: "none"}")
+                    
+                    if (currentPlaylist == null) {
+                        Log.d("VideoUseCase", "No playlist scheduled for current time")
+                        withContext(Dispatchers.Main) {
+                            try {
+                                if (::videoPlayer.isInitialized) {
+                                    videoPlayer.stop()
+                                }
+                                uiUseCase.showStatus("Không có playlist nào cần phát vào lúc ${LocalTime.now()}")
+                            } catch (e: Exception) {
+                                Log.e("VideoUseCase", "Error handling no playlist case: ${e.message}")
+                            }
+                        }
+                        return@launch
+                    }
+                    
+                    Log.d("VideoUseCase", "Found playlist to play: ${currentPlaylist.id}")
+                    
+                    // Get videos for the current playlist
+                    val videos = dataUseCase.getVideos()
+                    val playlistVideos = videos.filter { video -> 
+                        currentPlaylist.videoIds.contains(video.id) 
+                    }
+                    
+                    if (playlistVideos.isEmpty()) {
+                        Log.w("VideoUseCase", "No videos found for playlist ${currentPlaylist.id}")
+                        return@launch
+                    }
+                    
+                    // Initialize video player if not already done
+                    if (!::videoPlayer.isInitialized) {
+                        withContext(Dispatchers.Main) {
+                            videoPlayer = VideoPlayer(activity, videoView) {
+                                // When playlist finishes, check again after a short delay
+                                handler.postDelayed({ 
+                                    try {
+                                        checkAndPlayCurrentPlaylist() 
+                                    } catch (e: Exception) {
+                                        Log.e("VideoUseCase", "Error in playlist callback: ${e.message}")
+                                        e.printStackTrace()
+                                    }
+                                }, 1000)
+                            }
+                        }
+                    }
+                    
+                    // Start playing videos on the main thread
+                    withContext(Dispatchers.Main) {
+                        try {
+                            // Hide loading UI
+                            uiUseCase.hideLoading(videoView)
+                            
+                            // Play the playlist
+                            Log.d("VideoUseCase", "Starting to play playlist: ${currentPlaylist.id}")
+                            videoPlayer.playPlaylist(currentPlaylist)
+                        } catch (e: Exception) {
+                            Log.e("VideoUseCase", "Error updating UI in checkAndPlayCurrentPlaylist: ${e.message}")
+                            e.printStackTrace()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("VideoUseCase", "Error in checkAndPlayCurrentPlaylist coroutine: ${e.message}")
+                    e.printStackTrace()
                 }
             }
         } catch (e: Exception) {
