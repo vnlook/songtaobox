@@ -99,56 +99,61 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
             if (!::videoDownloadManager.isInitialized) {
                 videoDownloadManager = VideoDownloadManager(this)
                 videoDownloadManager.setDownloadListener(this)
+                videoDownloadManager.initializeVideoDownload(this)
             }
             Log.d(TAG, "Start download Playlist")
             // Start download process
-            videoDownloadManager.initializeVideoDownload(this)
+
 
         } catch (e: Exception) {
             Log.e(TAG, "Error checking for playlists: ${e.message}")
         }
     }
     
-    private fun checkForPlaylists() {
-        try {
-            // Initialize video download manager if needed
-            if (!::videoDownloadManager.isInitialized) {
-                videoDownloadManager = VideoDownloadManager(this)
-                videoDownloadManager.setDownloadListener(this)
-            }
-            
-            // Check if there are any playlists
-            val playlists = dataUseCase.getPlaylists()
-            
-            if (playlists.isNotEmpty()) {
-                // Use PlaylistScheduler to check if there's a valid playlist for the current time
-                val currentPlaylist = playlistScheduler.getCurrentPlaylist(playlists)
-                
-                if (currentPlaylist != null) {
-                    Log.d(TAG, "Found valid playlist for current time: ${currentPlaylist.id}, starting video download")
-                    // Start download process
-                    videoDownloadManager.initializeVideoDownload(this)
-                } else {
-                    Log.d(TAG, "No playlist scheduled for current time, staying on clock screen")
-                    // No playlist scheduled for current time, stay on the clock screen
-                    
-                    // Schedule another check in 1 minute
-                    handler.postDelayed({
-                        checkForPlaylists()
-                    }, 60000) // Check again in 1 minute
-                }
-            } else {
-                Log.d(TAG, "No playlists found, staying on clock screen")
-                // No playlists, just stay on the clock screen
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking for playlists: ${e.message}")
-        }
-    }
-    
-    override fun onProgressUpdate(completedDownloads: Int, totalDownloads: Int, progressPercent: Int) {
-        // We don't show download progress in this screen
-        Log.d(TAG, "Download progress: $completedDownloads/$totalDownloads - $progressPercent%")
+//    private fun checkForPlaylists() {
+//        try {
+//            // Initialize video download manager if needed
+//            if (!::videoDownloadManager.isInitialized) {
+//                videoDownloadManager = VideoDownloadManager(this)
+//                videoDownloadManager.setDownloadListener(this)
+//                videoDownloadManager.initializeVideoDownload(this)
+//            }
+//
+//            // Check if there are any playlists
+//            val playlists = dataUseCase.getPlaylists()
+//
+//            if (playlists.isNotEmpty()) {
+//                // Use PlaylistScheduler to check if there's a valid playlist for the current time
+//                val currentPlaylist = playlistScheduler.getCurrentPlaylist(playlists)
+//
+//                if (currentPlaylist != null) {
+//                    Log.d(TAG, "Found valid playlist for current time: ${currentPlaylist.id}, starting video download")
+//                    // Start download process
+//                    videoDownloadManager.initializeVideoDownload(this)
+//                } else {
+//                    Log.d(TAG, "No playlist scheduled for current time, staying on clock screen")
+//                    // No playlist scheduled for current time, stay on the clock screen
+//
+//                    // Schedule another check in 1 minute
+//                    handler.postDelayed({
+//                        checkForPlaylists()
+//                    }, 60000) // Check again in 1 minute
+//                }
+//            } else {
+//                Log.d(TAG, "No playlists found, staying on clock screen")
+//                // No playlists, just stay on the clock screen
+//            }
+//        } catch (e: Exception) {
+//            Log.e(TAG, "Error checking for playlists: ${e.message}")
+//        }
+//    }
+
+//    override fun onProgressUpdate(completedDownloads: Int, totalDownloads: Int, progressPercent: Int) {
+//        // We don't show download progress in this screen
+//        Log.d(TAG, "Download progress: $completedDownloads/$totalDownloads - $progressPercent%")
+//    }
+    override fun onProgressUpdate(completed: Int, total: Int, progressPercent: Int) {
+        Log.d(TAG, "Download progress: $completed/$total - $progressPercent%")
     }
     
     override fun onAllDownloadsCompleted() {
@@ -173,9 +178,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
                     // No playlist scheduled for current time, stay on the clock screen
                     
                     // Schedule a check in 1 minute to see if a new playlist should start
-                    handler.postDelayed({
-                        checkForPlaylists()
-                    }, 60000) // Check again in 1 minute
+//                    handler.postDelayed({
+//                        checkForPlaylists()
+//                    }, 60000) // Check again in 1 minute
                 }
             } else {
                 Log.d(TAG, "No playlists found, staying on digital clock screen")

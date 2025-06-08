@@ -160,21 +160,29 @@ class DataManager(private val context: Context) {
         }
     }
 
-    fun updateVideoDownloadStatus(videoId: String, isDownloaded: Boolean, localPath: String? = null) {
+    fun updateVideoDownloadStatus(videoUrl: String, isDownloaded: Boolean, localPath: String? = null) {
         try {
-            Log.d(TAG, "Updating download status for video $videoId to $isDownloaded with path: $localPath")
+            Log.d(TAG, "Updating download status for video $videoUrl to $isDownloaded with path: $localPath")
             val videos = getVideos().toMutableList()
-            val index = videos.indexOfFirst { it.id == videoId }
-            if (index != -1) {
-                videos[index] = videos[index].copy(
-                    isDownloaded = isDownloaded,
-                    localPath = localPath ?: videos[index].localPath
-                )
-                saveVideos(videos)
-                Log.d(TAG, "Video $videoId status updated successfully")
-            } else {
-                Log.w(TAG, "Video $videoId not found in the list")
+            for (video in videos) {
+                if (video.url == videoUrl) {
+                    video.isDownloaded = isDownloaded
+                    video.localPath = localPath
+                    break
+                }
             }
+            saveVideos(videos)
+//            val index = videos.indexOfFirst { it.id == videoId }
+//            if (index != -1) {
+//                videos[index] = videos[index].copy(
+//                    isDownloaded = isDownloaded,
+//                    localPath = localPath ?: videos[index].localPath
+//                )
+//                saveVideos(videos)
+//                Log.d(TAG, "Video $videoUrl status updated successfully")
+//            } else {
+//                Log.w(TAG, "Video $videoUrl not found in the list")
+//            }
         } catch (e: Exception) {
             Log.e(TAG, "Error updating video status: ${e.message}")
             e.printStackTrace()

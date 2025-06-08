@@ -58,7 +58,7 @@ class VideoPlayer(
         }
         
         val video = videos[currentVideoIndex]
-        val videoPath = downloadHelper.getVideoDownloadPath(video.id)
+        val videoPath = downloadHelper.getVideoDownloadPath(video.url)
         val file = File(videoPath)
         
         if (!file.exists()) {

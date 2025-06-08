@@ -249,13 +249,13 @@ class VideoUseCase(
             timer = null
             
             // Clean up video download manager
-            if (::videoDownloadManager.isInitialized) {
-                try {
-                    videoDownloadManager.cleanup()
-                } catch (e: Exception) {
-                    Log.e("VideoUseCase", "Error cleaning up download manager: ${e.message}")
-                }
-            }
+//            if (::videoDownloadManager.isInitialized) {
+//                try {
+//                    videoDownloadManager.cleanup()
+//                } catch (e: Exception) {
+//                    Log.e("VideoUseCase", "Error cleaning up download manager: ${e.message}")
+//                }
+//            }
             
             // Stop video player
             if (::videoPlayer.isInitialized) {
