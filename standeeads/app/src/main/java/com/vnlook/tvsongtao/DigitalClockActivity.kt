@@ -14,7 +14,10 @@ import android.widget.TextClock
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.vnlook.tvsongtao.model.Playlist
+import com.vnlook.tvsongtao.repository.ChangelogRepository
+import com.vnlook.tvsongtao.repository.ChangelogRepositoryImpl
 import com.vnlook.tvsongtao.usecase.DataUseCase
+import com.vnlook.tvsongtao.utils.ChangelogUtil
 import com.vnlook.tvsongtao.utils.PlaylistScheduler
 import com.vnlook.tvsongtao.utils.VideoDownloadManager
 import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
@@ -37,6 +40,8 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private lateinit var videoDownloadManager: VideoDownloadManager
     private lateinit var dataUseCase: DataUseCase
     private lateinit var playlistScheduler: PlaylistScheduler
+    private lateinit var changelogRepository: ChangelogRepository
+    private lateinit var changelogUtil: ChangelogUtil
     private val handler = Handler(Looper.getMainLooper())
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
@@ -74,6 +79,10 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         dataUseCase.initialize()
         playlistScheduler = PlaylistScheduler()
         
+        // Initialize changelog repository and util
+        changelogRepository = ChangelogRepositoryImpl(this)
+        changelogUtil = ChangelogUtil(this, changelogRepository)
+        
         // Log that we're starting the activity
         Log.d(TAG, "Digital clock screen started")
         
@@ -108,10 +117,50 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
             }
             Log.d(TAG, "Start download Playlist")
             // Start download process
+            
+            // Don't check for changelog updates when app is first opened
+            // The scheduler job will handle periodic checks
 
 
         } catch (e: Exception) {
             Log.e(TAG, "Error checking for playlists: ${e.message}")
+        }
+    }
+    
+    /**
+     * Check for changelog updates in the background
+     * If there are changes, reload playlists
+     */
+    private fun checkForChangelogUpdates() {
+        coroutineScope.launch {
+            try {
+                Log.d(TAG, "Checking for changelog updates")
+                
+                // Check if there are changes in the changelog
+                val hasChanges = changelogUtil.checkChange()
+                
+                if (hasChanges) {
+                    Log.d(TAG, "Changelog updates detected, reloading playlists")
+                    
+                    // Reload playlists from API
+                    withContext(Dispatchers.Main) {
+                        // Re-initialize video download manager to reload playlists
+                        if (::videoDownloadManager.isInitialized) {
+                            videoDownloadManager.cleanup()
+                        }
+                        videoDownloadManager = VideoDownloadManager(this@DigitalClockActivity)
+                        videoDownloadManager.setDownloadListener(this@DigitalClockActivity)
+                        videoDownloadManager.initializeVideoDownload(this@DigitalClockActivity)
+                        
+                        Log.d(TAG, "Playlists reloaded due to changelog updates")
+                    }
+                } else {
+                    Log.d(TAG, "No changelog updates detected")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking for changelog updates: ${e.message}")
+                e.printStackTrace()
+            }
         }
     }
     

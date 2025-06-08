@@ -68,6 +68,7 @@ class DataManager(private val context: Context) {
         
         // Create map for efficient lookups - prioritize URL matching
         val existingByUrl = existingVideos.associateBy { it.url }
+        val existingById = existingVideos.associateBy { it.id }
         
         // Track URLs in new videos for later cleanup
         val newVideoUrls = newVideos.map { it.url }.toSet()
@@ -168,7 +169,6 @@ class DataManager(private val context: Context) {
                 if (video.url == videoUrl) {
                     video.isDownloaded = isDownloaded
                     video.localPath = localPath
-                    break
                 }
             }
             saveVideos(videos)

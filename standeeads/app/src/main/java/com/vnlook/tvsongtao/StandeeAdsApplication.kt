@@ -6,6 +6,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import com.vnlook.tvsongtao.utils.ChangelogChecker
+import com.vnlook.tvsongtao.utils.ChangelogSchedulerJob
 import java.io.File
 import java.io.FileOutputStream
 import java.io.PrintWriter
@@ -37,7 +39,35 @@ class StandeeAdsApplication : Application() {
         // Set up global error handler
         setupUncaughtExceptionHandler()
         
+        // Schedule the changelog checker job
+        scheduleChangelogJob()
+        
         Log.d(TAG, "StandeeAdsApplication initialized")
+    }
+    
+    /**
+     * Schedule the job to check for changelog updates
+     * For testing, we use both the JobScheduler and a Handler-based checker
+     */
+    private fun scheduleChangelogJob() {
+        try {
+            // Try to schedule the JobScheduler first (for production)
+            try {
+                ChangelogSchedulerJob.schedule(this)
+                Log.d(TAG, "Changelog scheduler job scheduled")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error scheduling changelog job: ${e.message}")
+                e.printStackTrace()
+            }
+            
+            // Also start the Handler-based checker for testing with short intervals
+            val changelogChecker = ChangelogChecker.getInstance(this)
+            changelogChecker.startChecking()
+            Log.d(TAG, "Changelog checker started for testing")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up changelog checks: ${e.message}")
+            e.printStackTrace()
+        }
     }
     
     private fun setupUncaughtExceptionHandler() {

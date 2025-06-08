@@ -60,6 +60,7 @@ object VNLApiResponseParser {
                 val playlistVideos = playlistData.assets.mapNotNull { asset ->
                     asset.mediaAssetsId?.let { mediaAsset ->
                         val videoId = mediaAsset.file?.id
+                        val assetId = mediaAsset.id
                         if (videoId == null) {
                             Log.w(TAG, "Skipping video with null ID in playlist ${playlistData.id}")
                             return@let null
@@ -79,7 +80,7 @@ object VNLApiResponseParser {
                         Log.d(TAG, "Found video: ID=${videoId}, name=${videoName}, url=${videoUrl}")
                         
                         Video(
-                            id = videoId,
+                            id = "$assetId",
                             name = videoName,
                             url = videoUrl,
                             isDownloaded = false
@@ -145,6 +146,7 @@ object VNLApiResponseParser {
     )
     
     data class VNLMediaAsset(
+        @SerializedName("id") val id: Int = 0,
         @SerializedName("title") val title: String? = null,
         @SerializedName("fileUrl") val fileUrl: String? = null,
         @SerializedName("file") val file: VNLFile? = null,

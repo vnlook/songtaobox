@@ -1,6 +1,11 @@
 package com.vnlook.tvsongtao.repository
 
+import android.content.Context
 import android.util.Log
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import com.vnlook.tvsongtao.model.Changelog
 import com.vnlook.tvsongtao.utils.ApiLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -10,28 +15,28 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Client for making API calls to VNL API
+ * Implementation of ChangelogRepository that handles changelog API operations
  */
-object VNLApiClient {
-    private const val TAG = "VNLApiClient"
+class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepository {
+    private val TAG = "ChangelogRepository"
+    private val gson = Gson()
     
-    private const val API_URL = "https://songtao.vnlook.com/items/media_playlist"
-    private const val API_FIELDS = "id,title,active,order,beginTime,endTime,assets.media_assets_id.title,assets.media_assets_id.id,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download"
+    private val API_URL = "https://songtao.vnlook.com/items/changelog"
+    private val API_PARAMS = "limit=1&sort=-date_created"
     
     /**
-     * Make a GET request to the VNL API
-     * 
-     * @return API response as JSON string or null if request failed
+     * Get latest changelog entry from VNL API
+     * @return Latest changelog entry or null if API call failed
      */
-    suspend fun getPlaylists(): String? = withContext(Dispatchers.IO) {
+    override suspend fun getLatestChangelog(): Changelog? = withContext(Dispatchers.IO) {
         try {
-            val urlString = "$API_URL?fields=$API_FIELDS"
+            val urlString = "$API_URL?$API_PARAMS"
             val url = URL(urlString)
             
             // Log the API request
             val headers = mapOf(
                 "User-Agent" to "Apidog/1.0.0 (https://apidog.com)",
-                "Accept" to "*/*",
+                "Accept" to "application/json",
                 "Host" to "songtao.vnlook.com",
                 "Connection" to "keep-alive"
             )
@@ -43,7 +48,7 @@ object VNLApiClient {
             
             // Set headers
             connection.setRequestProperty("User-Agent", "Apidog/1.0.0 (https://apidog.com)")
-            connection.setRequestProperty("Accept", "*/*")
+            connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("Host", "songtao.vnlook.com")
             connection.setRequestProperty("Connection", "keep-alive")
             
@@ -70,7 +75,8 @@ object VNLApiClient {
                 Log.d(TAG, "API response received: ${responseString.length} bytes")
                 Log.d(TAG, "API response preview: ${responseString.take(100)}...")
                 
-                return@withContext responseString
+                // Parse the response
+                return@withContext parseChangelogResponse(responseString)
             } else {
                 Log.e(TAG, "API request failed with response code: $responseCode")
                 return@withContext null
@@ -79,6 +85,29 @@ object VNLApiClient {
             Log.e(TAG, "Error making API request: ${e.message}")
             e.printStackTrace()
             return@withContext null
+        }
+    }
+    
+    /**
+     * Parse the API response to extract the changelog entry
+     * @param responseString API response as JSON string
+     * @return Changelog object or null if parsing failed
+     */
+    private fun parseChangelogResponse(responseString: String): Changelog? {
+        try {
+            val jsonObject = JsonParser.parseString(responseString).asJsonObject
+            val dataArray = jsonObject.getAsJsonArray("data")
+            
+            if (dataArray != null && dataArray.size() > 0) {
+                val changelogJson = dataArray.get(0).asJsonObject
+                return gson.fromJson(changelogJson, Changelog::class.java)
+            }
+            
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing changelog response: ${e.message}")
+            e.printStackTrace()
+            return null
         }
     }
 }
