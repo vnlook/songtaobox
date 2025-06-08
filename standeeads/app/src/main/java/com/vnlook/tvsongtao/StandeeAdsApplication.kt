@@ -6,8 +6,14 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import com.vnlook.tvsongtao.repository.DeviceRepository
+import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import com.vnlook.tvsongtao.utils.ChangelogChecker
 import com.vnlook.tvsongtao.utils.ChangelogSchedulerJob
+import com.vnlook.tvsongtao.utils.DeviceInfoUtil
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.io.PrintWriter
@@ -16,6 +22,7 @@ import java.util.Date
 import java.util.Locale
 
 class StandeeAdsApplication : Application() {
+    private val coroutineScope = CoroutineScope(Dispatchers.IO)
     
     companion object {
         private const val TAG = "StandeeAdsApplication"
@@ -39,10 +46,38 @@ class StandeeAdsApplication : Application() {
         // Set up global error handler
         setupUncaughtExceptionHandler()
         
+        // Register or update device info
+        registerDeviceInfo()
+        
         // Schedule the changelog checker job
         scheduleChangelogJob()
         
         Log.d(TAG, "StandeeAdsApplication initialized")
+    }
+    
+    /**
+     * Register or update device information with the API
+     * Creates a new device if it doesn't exist, or updates an existing one
+     */
+    private fun registerDeviceInfo() {
+        try {
+            Log.d(TAG, "Registering device info")
+            val deviceRepository: DeviceRepository = DeviceRepositoryImpl(this)
+            val deviceInfoUtil = DeviceInfoUtil(this, deviceRepository)
+            
+            coroutineScope.launch {
+                try {
+                    val result = deviceInfoUtil.registerOrUpdateDevice()
+                    Log.d(TAG, "Device registration result: $result")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error registering device: ${e.message}")
+                    e.printStackTrace()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up device registration: ${e.message}")
+            e.printStackTrace()
+        }
     }
     
     /**

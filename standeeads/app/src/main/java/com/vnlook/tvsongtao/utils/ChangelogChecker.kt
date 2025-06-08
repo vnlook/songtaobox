@@ -8,6 +8,8 @@ import android.util.Log
 import com.vnlook.tvsongtao.DigitalClockActivity
 import com.vnlook.tvsongtao.repository.ChangelogRepository
 import com.vnlook.tvsongtao.repository.ChangelogRepositoryImpl
+import com.vnlook.tvsongtao.repository.DeviceRepository
+import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,6 +24,8 @@ class ChangelogChecker(private val context: Context) {
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     private val changelogRepository: ChangelogRepository = ChangelogRepositoryImpl(context)
     private val changelogUtil = ChangelogUtil(context, changelogRepository)
+    private val deviceRepository: DeviceRepository = DeviceRepositoryImpl(context)
+    private val deviceInfoUtil = DeviceInfoUtil(context, deviceRepository)
     
     companion object {
         // For testing, check every 15 seconds
@@ -64,13 +68,24 @@ class ChangelogChecker(private val context: Context) {
     }
     
     /**
-     * Check for changes in the changelog
+     * Check for changes in the changelog and update device info
      */
     private fun checkForChanges() {
-        Log.d(TAG, "Checking for changelog changes...")
+        Log.d(TAG, "Checking for changelog changes and updating device info...")
         
         coroutineScope.launch {
             try {
+                // Update device info regardless of changelog changes
+                try {
+                    Log.d(TAG, "Updating device info")
+                    val deviceInfoResult = deviceInfoUtil.registerOrUpdateDevice()
+                    Log.d(TAG, "Device info update result: $deviceInfoResult")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error updating device info: ${e.message}")
+                    // Continue with changelog check even if device update fails
+                }
+                
+                // Check for changelog changes
                 val hasChanges = changelogUtil.checkChange()
                 
                 if (hasChanges) {

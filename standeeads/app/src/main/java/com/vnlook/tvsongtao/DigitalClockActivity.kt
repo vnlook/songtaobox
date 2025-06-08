@@ -16,8 +16,11 @@ import androidx.appcompat.app.AppCompatActivity
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.repository.ChangelogRepository
 import com.vnlook.tvsongtao.repository.ChangelogRepositoryImpl
+import com.vnlook.tvsongtao.repository.DeviceRepository
+import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import com.vnlook.tvsongtao.usecase.DataUseCase
 import com.vnlook.tvsongtao.utils.ChangelogUtil
+import com.vnlook.tvsongtao.utils.DeviceInfoUtil
 import com.vnlook.tvsongtao.utils.PlaylistScheduler
 import com.vnlook.tvsongtao.utils.VideoDownloadManager
 import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
@@ -42,6 +45,8 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private lateinit var playlistScheduler: PlaylistScheduler
     private lateinit var changelogRepository: ChangelogRepository
     private lateinit var changelogUtil: ChangelogUtil
+    private lateinit var deviceRepository: DeviceRepository
+    private lateinit var deviceInfoUtil: DeviceInfoUtil
     private val handler = Handler(Looper.getMainLooper())
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
@@ -83,8 +88,15 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         changelogRepository = ChangelogRepositoryImpl(this)
         changelogUtil = ChangelogUtil(this, changelogRepository)
         
+        // Initialize device repository and util
+        deviceRepository = DeviceRepositoryImpl(this)
+        deviceInfoUtil = DeviceInfoUtil(this, deviceRepository)
+        
         // Log that we're starting the activity
         Log.d(TAG, "Digital clock screen started")
+        
+        // Register device info if needed
+        registerDeviceInfo()
         
         // Start checking for playlists with a slight delay to ensure UI is visible
         handler.postDelayed({
@@ -105,6 +117,31 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private fun updateDate() {
         val currentDate = Date()
         dateText.text = dateFormat.format(currentDate)
+    }
+    
+    /**
+     * Register device information with the API
+     * Creates a new device if it doesn't exist, or updates an existing one
+     */
+    private fun registerDeviceInfo() {
+        Log.d(TAG, "Checking if device info needs to be registered")
+        
+        // Run in a coroutine to avoid blocking the UI thread
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val result = deviceInfoUtil.registerOrUpdateDevice()
+                withContext(Dispatchers.Main) {
+                    if (result != null) {
+                        Log.d(TAG, "Device registration successful: $result")
+                    } else {
+                        Log.e(TAG, "Device registration failed")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error registering device: ${e.message}")
+                e.printStackTrace()
+            }
+        }
     }
 
     private fun checkCompareAndDownloadPlaylists() {

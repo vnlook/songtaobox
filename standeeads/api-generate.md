@@ -1,10 +1,13 @@
 # API Generate
 - Repository
-- API:
-    - GET /items/changelog
+- API: Create Play Device
+    - POST /items/play_device
 ## Curl API
-curl -X GET "https://songtao.vnlook.com/items/changelog?limit=1&sort=-date_created" \
- -H "accept: application/json" \
+curl -X POST "https://songtao.vnlook.com/items/play_device" \
+ -H "accept: application/json"\
+ -H "content-type: application/json" \
+ -d '[{"device_id":"tvbox3","device_name":"tvbox02","location":"Tay Ninh","active":true,"mapLocation":"POINT (106.7906368997206 10.804248069799328)"}]' \
+
 
 
 ## Sample Response
@@ -12,12 +15,42 @@ curl -X GET "https://songtao.vnlook.com/items/changelog?limit=1&sort=-date_creat
 {
   "data": [
     {
-      "id": 22,
-      "date_created": "2025-06-08T10:08:38.861Z",
-      "date_updated": null,
-      "log": "New Update from playlist and video"
+      "id": 9,
+      "device_id": "tvbox3",
+      "device_name": "tvbox02",
+      "location": "Tay Ninh",
+      "active": true,
+      "mapLocation": "POINT (106.7906368997206 10.804248069799328)"
     }
   ]
+}
+
+```
+
+# API Generate
+- Repository
+- API: Update Play Device
+    - PATCH /items/play_device
+## Curl API
+curl -X PATCH "https://songtao.vnlook.com/items/play_device/9" \
+ -H "accept: application/json"\
+ -H "content-type: application/json" \
+ -d '{"id":9,"device_name":"tvbox03","location":"Tay Ninh","active":true,"mapLocation":"POINT (106.7906368997206 10.804248069799329)"}' \
+
+
+
+
+## Sample Response
+```json
+{
+  "data": {
+    "id": 9,
+    "device_id": "tvbox3",
+    "device_name": "tvbox03",
+    "location": "Tay Ninh",
+    "active": true,
+    "mapLocation": "POINT (106.7906368997206 10.804248069799329)"
+  }
 }
 
 ```

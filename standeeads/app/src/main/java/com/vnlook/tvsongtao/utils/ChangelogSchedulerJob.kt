@@ -12,6 +12,8 @@ import android.util.Log
 import com.vnlook.tvsongtao.DigitalClockActivity
 import com.vnlook.tvsongtao.repository.ChangelogRepository
 import com.vnlook.tvsongtao.repository.ChangelogRepositoryImpl
+import com.vnlook.tvsongtao.repository.DeviceRepository
+import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -85,11 +87,20 @@ class ChangelogSchedulerJob : JobService() {
         // Run the job in a coroutine to avoid blocking the main thread
         coroutineScope.launch {
             try {
-                // Create repository and util
+                // Create changelog repository and util
                 val changelogRepository: ChangelogRepository = ChangelogRepositoryImpl(applicationContext)
                 val changelogUtil = ChangelogUtil(applicationContext, changelogRepository)
                 
-                // Check for changes
+                // Create device repository and util
+                val deviceRepository: DeviceRepository = DeviceRepositoryImpl(applicationContext)
+                val deviceInfoUtil = DeviceInfoUtil(applicationContext, deviceRepository)
+                
+                // Update device info in the background
+                Log.d(TAG, "Updating device info")
+                val deviceInfoResult = deviceInfoUtil.registerOrUpdateDevice()
+                Log.d(TAG, "Device info update result: $deviceInfoResult")
+                
+                // Check for changelog changes
                 val hasChanges = changelogUtil.checkChange()
                 
                 if (hasChanges) {
