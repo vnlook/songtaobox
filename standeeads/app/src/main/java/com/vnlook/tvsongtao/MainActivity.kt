@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.KeyEvent
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -12,6 +13,7 @@ import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.ui.PlayerView
 import com.vnlook.tvsongtao.usecase.*
+import com.vnlook.tvsongtao.utils.KioskModeManager
 import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
 
 /**
@@ -34,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var videoUseCase: VideoUseCase
     private lateinit var permissionUseCase: PermissionUseCase
     private lateinit var appLifecycleUseCase: AppLifecycleUseCase
+    private lateinit var kioskModeManager: KioskModeManager
     
     private val handler = Handler(Looper.getMainLooper())
 
@@ -82,6 +85,10 @@ class MainActivity : AppCompatActivity() {
             // Check permissions immediately in the main thread
             // This ensures permissions are requested as soon as the activity is created
             permissionUseCase.checkAndRequestPermissions()
+            
+            // Initialize and enable kiosk mode
+            kioskModeManager = KioskModeManager(this)
+            enableKioskMode()
             
             // Start keep-alive mechanism
             appLifecycleUseCase.startKeepAlive()
@@ -170,10 +177,58 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Enable kiosk mode
+     */
+    private fun enableKioskMode() {
+        try {
+            // Use the enhanced kiosk mode that works without Device Owner permissions
+            kioskModeManager.enableFullKioskMode(this)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error enabling kiosk mode: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+    
     override fun onResume() {
         super.onResume()
         uiUseCase.setupFullScreen()
         appLifecycleUseCase.onResume()
+        
+        // Always re-enable kiosk mode on resume
+        if (::kioskModeManager.isInitialized) {
+            enableKioskMode()
+        }
+    }
+    
+    /**
+     * Chặn các phím vật lý như Back, Home, Recent Apps
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // Chặn các phím điều hướng khi chế độ kiosk được bật
+        if (KioskModeManager.KIOSK_MODE_ENABLED) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_BACK,
+                KeyEvent.KEYCODE_HOME,
+                KeyEvent.KEYCODE_MENU,
+                KeyEvent.KEYCODE_APP_SWITCH,
+                KeyEvent.KEYCODE_POWER -> {
+                    return true // Chặn phím
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+    
+    /**
+     * Chặn nút Back
+     */
+    override fun onBackPressed() {
+        // Không làm gì khi nút Back được nhấn trong chế độ kiosk
+        if (KioskModeManager.KIOSK_MODE_ENABLED) {
+            return
+        }
+        super.onBackPressed()
     }
 
     override fun onPause() {
@@ -183,6 +238,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        
+        // Disable kiosk mode when activity is destroyed
+        try {
+            if (::kioskModeManager.isInitialized) {
+                kioskModeManager.stopLockTask(this)
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error disabling kiosk mode: ${e.message}")
+        }
+        
         appLifecycleUseCase.onDestroy()
     }
 }

@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.AnalogClock
@@ -22,6 +23,7 @@ import com.vnlook.tvsongtao.usecase.DataUseCase
 import com.vnlook.tvsongtao.usecase.PermissionUseCase
 import com.vnlook.tvsongtao.utils.ChangelogUtil
 import com.vnlook.tvsongtao.utils.DeviceInfoUtil
+import com.vnlook.tvsongtao.utils.KioskModeManager
 import com.vnlook.tvsongtao.utils.PlaylistScheduler
 import com.vnlook.tvsongtao.utils.VideoDownloadManager
 import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
@@ -49,6 +51,7 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private lateinit var deviceRepository: DeviceRepository
     private lateinit var deviceInfoUtil: DeviceInfoUtil
     private lateinit var permissionUseCase: PermissionUseCase
+    private lateinit var kioskModeManager: KioskModeManager
     private val handler = Handler(Looper.getMainLooper())
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
@@ -97,6 +100,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         // Initialize permission use case
         permissionUseCase = PermissionUseCase(this)
         
+        // Initialize kiosk mode manager
+        kioskModeManager = KioskModeManager(this)
+        
         // Log that we're starting the activity
         Log.d(TAG, "Digital clock screen started")
         
@@ -106,6 +112,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         } else {
             Log.d(TAG, "Some permissions not granted in DigitalClockActivity, requested")
         }
+        
+        // Enable full kiosk mode
+        enableKioskMode()
         
         // Register device info if needed
         registerDeviceInfo()
@@ -355,8 +364,66 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         }
     }
     
+    /**
+     * Enable kiosk mode
+     */
+    private fun enableKioskMode() {
+        try {
+            // Use the enhanced kiosk mode that works without Device Owner permissions
+            kioskModeManager.enableFullKioskMode(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error enabling kiosk mode: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        
+        // Always re-enable kiosk mode on resume
+        enableKioskMode()
+    }
+    
+    /**
+     * Chặn các phím vật lý như Back, Home, Recent Apps
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        // Chặn các phím điều hướng khi chế độ kiosk được bật
+        if (KioskModeManager.KIOSK_MODE_ENABLED) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_BACK,
+                KeyEvent.KEYCODE_HOME,
+                KeyEvent.KEYCODE_MENU,
+                KeyEvent.KEYCODE_APP_SWITCH,
+                KeyEvent.KEYCODE_POWER -> {
+                    return true // Chặn phím
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+    
+    /**
+     * Chặn nút Back
+     */
+    override fun onBackPressed() {
+        // Không làm gì khi nút Back được nhấn trong chế độ kiosk
+        if (KioskModeManager.KIOSK_MODE_ENABLED) {
+            return
+        }
+        super.onBackPressed()
+    }
+    
     override fun onDestroy() {
         super.onDestroy()
+        
+        // Disable kiosk mode when activity is destroyed
+        try {
+            kioskModeManager.stopLockTask(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error disabling kiosk mode: ${e.message}")
+        }
+        
         if (::videoDownloadManager.isInitialized) {
             videoDownloadManager.cleanup()
         }

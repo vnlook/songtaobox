@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Standee Ads</string>
+    <string name="accessibility_service_description">Dịch vụ này giúp ứng dụng hoạt động ở chế độ kiosk mà không hiển thị thông báo</string>
 </resources>
