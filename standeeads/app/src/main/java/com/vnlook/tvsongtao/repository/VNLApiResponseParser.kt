@@ -23,6 +23,29 @@ object VNLApiResponseParser {
      * @param jsonString JSON string from API response
      * @return Pair of playlists and videos lists
      */
+    /**
+     * Parse the raw API response JSON string into VNLApiResponse object
+     * 
+     * @param jsonString JSON string from API response
+     * @return VNLApiResponse object
+     */
+    fun getRawApiResponse(jsonString: String): VNLApiResponse {
+        try {
+            val type = object : TypeToken<VNLApiResponse>() {}.type
+            return gson.fromJson(jsonString, type)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing raw API response: ${e.message}")
+            e.printStackTrace()
+            return VNLApiResponse(emptyList())
+        }
+    }
+    
+    /**
+     * Parse API response JSON string into playlists and videos
+     * 
+     * @param jsonString JSON string from API response
+     * @return Pair of playlists and videos lists
+     */
     fun parseApiResponse(jsonString: String): Pair<List<Playlist>, List<Video>> {
         Log.d(TAG, "Parsing VNL API response JSON")
         
@@ -96,6 +119,7 @@ object VNLApiResponseParser {
                     id = playlistData.id.toString(),
                     startTime = playlistData.beginTime?.substring(0, 5) ?: "00:00", // Extract HH:MM from HH:MM:SS
                     endTime = playlistData.endTime?.substring(0, 5) ?: "23:59",
+                    portrait = playlistData.portrait,
                     videoIds = playlistVideos.map { it.id }
                 )
                 
@@ -138,6 +162,7 @@ object VNLApiResponseParser {
         @SerializedName("order") val order: Int = 0,
         @SerializedName("beginTime") val beginTime: String? = null,
         @SerializedName("endTime") val endTime: String? = null,
+        @SerializedName("portrait") val portrait: Boolean = true,
         @SerializedName("assets") val assets: List<VNLAsset> = emptyList()
     )
     

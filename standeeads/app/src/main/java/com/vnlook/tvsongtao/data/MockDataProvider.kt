@@ -22,14 +22,14 @@ object MockDataProvider {
         )
     }
 
-    fun getMockPlaylists(): List<Playlist> {
-        return listOf(
-            Playlist(
-                id = "playlist_01",
-                startTime = "08:00",
-                endTime = "22:00",
-                videoIds = listOf("video_01", "video_02")
-            )
-        )
-    }
+//    fun getMockPlaylists(): List<Playlist> {
+//        return listOf(
+//            Playlist(
+//                id = "playlist_01",
+//                startTime = "08:00",
+//                endTime = "22:00",
+//                videoIds = listOf("video_01", "video_02")
+//            )
+//        )
+//    }
 }
