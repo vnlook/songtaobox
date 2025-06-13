@@ -21,6 +21,19 @@ interface DeviceRepository {
     suspend fun updateDevice(deviceInfo: DeviceInfo): DeviceInfo?
     
     /**
+     * Get list of all devices from the backend
+     * @return List of all devices, or empty list if failed
+     */
+    suspend fun getListDevices(): List<DeviceInfo>
+    
+    /**
+     * Find device in the backend by device ID
+     * @param deviceId The device ID to search for
+     * @return The device information if found, null otherwise
+     */
+    suspend fun findDeviceByDeviceId(deviceId: String): DeviceInfo?
+    
+    /**
      * Save device information to local storage
      * @param deviceInfo The device information to save
      */

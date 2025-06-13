@@ -8,6 +8,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.google.gson.reflect.TypeToken
 import com.vnlook.tvsongtao.model.DeviceInfo
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -174,6 +175,64 @@ class DeviceRepositoryImpl(private val context: Context) : DeviceRepository {
      */
     override fun hasDeviceInfo(): Boolean {
         return sharedPreferences.contains(KEY_DEVICE_INFO)
+    }
+    
+    /**
+     * Get list of all devices from the backend
+     * @return List of all devices, or empty list if failed
+     */
+    override suspend fun getListDevices(): List<DeviceInfo> {
+        try {
+            val apiUrl = "https://songtao.vnlook.com/items/play_device"
+            val url = URL(apiUrl)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Accept", "application/json")
+            
+            val responseCode = connection.responseCode
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                Log.d(TAG, "Get devices list response: $response")
+                
+                // Parse response
+                val jsonResponse = JsonParser.parseString(response).asJsonObject
+                val dataArray = jsonResponse.getAsJsonArray("data")
+                
+                if (dataArray != null) {
+                    val devicesList = mutableListOf<DeviceInfo>()
+                    for (i in 0 until dataArray.size()) {
+                        val deviceJson = dataArray.get(i).asJsonObject
+                        val device = gson.fromJson(deviceJson, DeviceInfo::class.java)
+                        devicesList.add(device)
+                    }
+                    Log.d(TAG, "Found ${devicesList.size} devices")
+                    return devicesList
+                }
+            } else {
+                val errorResponse = connection.errorStream?.bufferedReader()?.use { it.readText() }
+                Log.e(TAG, "Error getting devices list: $responseCode, $errorResponse")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception getting devices list: ${e.message}")
+            e.printStackTrace()
+        }
+        return emptyList()
+    }
+    
+    /**
+     * Find device in the backend by device ID
+     * @param deviceId The device ID to search for
+     * @return The device information if found, null otherwise
+     */
+    override suspend fun findDeviceByDeviceId(deviceId: String): DeviceInfo? {
+        try {
+            val devices = getListDevices()
+            return devices.find { it.deviceId == deviceId }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception finding device by ID: ${e.message}")
+            e.printStackTrace()
+        }
+        return null
     }
     
     companion object {
