@@ -14,16 +14,20 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
         if (action == Intent.ACTION_BOOT_COMPLETED) {
-            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            val isAppRunning = activityManager.runningAppProcesses.any {
-                it.processName == context.packageName
-            }
-
-            if (!isAppRunning) {
-                val launchIntent = Intent(context, DigitalClockActivity::class.java)
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(launchIntent)
-            }
+//            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+//            val isAppRunning = activityManager.runningAppProcesses.any {
+//                it.processName == context.packageName
+//            }
+//
+//            if (!isAppRunning) {
+//                val launchIntent = Intent(context, DigitalClockActivity::class.java)
+//                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+//                context.startActivity(launchIntent)
+//            }
+            Log.d(TAG, "Boot completed received. Launching DigitalClockActivity.");
+            val launchIntent = Intent(context, DigitalClockActivity::class.java)
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(launchIntent)
         }
     }
 

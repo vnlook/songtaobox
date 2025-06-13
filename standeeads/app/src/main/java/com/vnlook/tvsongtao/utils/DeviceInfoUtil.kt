@@ -1,5 +1,6 @@
 package com.vnlook.tvsongtao.utils
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Geocoder
 import android.location.Location
@@ -10,6 +11,7 @@ import com.vnlook.tvsongtao.repository.DeviceRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.util.UUID
 
 /**
  * Utility class for handling device information operations
@@ -84,7 +86,10 @@ class DeviceInfoUtil(
     /**
      * Get the device ID (Android ID)
      */
+    @SuppressLint("HardwareIds")
     private fun getDeviceId(): String {
+//        val uuid = UUID.randomUUID().toString()
+//        return  uuid + getDeviceName()
         return android.provider.Settings.Secure.getString(
             context.contentResolver,
             android.provider.Settings.Secure.ANDROID_ID

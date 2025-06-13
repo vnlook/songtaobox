@@ -16,7 +16,7 @@ object VNLApiClient {
     private const val TAG = "VNLApiClient"
     
     private const val API_URL = "https://songtao.vnlook.com/items/media_playlist"
-    private const val API_FIELDS = "id,title,active,order,beginTime,endTime,portrait,assets.media_assets_id.title,assets.media_assets_id.id,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download"
+    private const val API_FIELDS = "id,title,active,order,beginTime,endTime,portrait,device.device_id,device.device_name,assets.media_assets_id.title,assets.media_assets_id.id,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download"
     
     /**
      * Make a GET request to the VNL API

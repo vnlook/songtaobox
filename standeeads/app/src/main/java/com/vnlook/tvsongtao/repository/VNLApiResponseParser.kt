@@ -120,6 +120,8 @@ object VNLApiResponseParser {
                     startTime = playlistData.beginTime?.substring(0, 5) ?: "00:00", // Extract HH:MM from HH:MM:SS
                     endTime = playlistData.endTime?.substring(0, 5) ?: "23:59",
                     portrait = playlistData.portrait,
+                    deviceId = playlistData.device?.deviceId,
+                    deviceName = playlistData.device?.deviceName,
                     videoIds = playlistVideos.map { it.id }
                 )
                 
@@ -163,11 +165,17 @@ object VNLApiResponseParser {
         @SerializedName("beginTime") val beginTime: String? = null,
         @SerializedName("endTime") val endTime: String? = null,
         @SerializedName("portrait") val portrait: Boolean = true,
+        @SerializedName("device") val device: VNLDevice? = null,
         @SerializedName("assets") val assets: List<VNLAsset> = emptyList()
     )
     
     data class VNLAsset(
         @SerializedName("media_assets_id") val mediaAssetsId: VNLMediaAsset? = null
+    )
+
+    data class VNLDevice(
+        @SerializedName("device_id") val deviceId: String? = null,
+        @SerializedName("device_name") val deviceName: String? = null
     )
     
     data class VNLMediaAsset(

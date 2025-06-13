@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.util.Log
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.utils.ApiLogger
+import com.vnlook.tvsongtao.utils.DeviceInfoUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -42,9 +43,10 @@ class PlaylistRepositoryImpl(private val context: Context) : PlaylistRepository 
         // Check if device is in portrait mode
         val isPortrait = context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         Log.d(TAG, "Device orientation is ${if (isPortrait) "portrait" else "landscape"}")
-
+        val deviceRepository = DeviceRepositoryImpl(context)
+        val deviceInfo = deviceRepository.getDeviceInfo()
         // Filter playlists based on device orientation and portrait field
-        val filteredPlaylists = playlists.filter { it.portrait == isPortrait }
+        val filteredPlaylists = playlists.filter { it.portrait == isPortrait && it.deviceId == deviceInfo?.deviceId && it.deviceName == deviceInfo?.deviceName && it.deviceName != null }
         Log.d(TAG, "Filtered playlists based on orientation: ${filteredPlaylists.size} of ${playlists.size}")
         return filteredPlaylists
     }
