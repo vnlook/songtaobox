@@ -6,6 +6,7 @@ import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -210,13 +211,27 @@ class DeviceInfoUtil(
      * Get the device name (manufacturer and model)
      */
     private fun getDeviceName(): String {
+//        val manufacturer = Build.MANUFACTURER
+//        val model = Build.MODEL
+//        return if (model.startsWith(manufacturer)) {
+//            model
+//        } else {
+//            "$manufacturer $model"
+//        }
+        val name = getCustomDeviceName(context)
+        return  name
+    }
+
+    private fun getCustomDeviceName(context: Context): String {
+        return Settings.Global.getString(context.contentResolver, "device_name")
+            ?: Settings.Secure.getString(context.contentResolver, "bluetooth_name")
+            ?: getFallbackDeviceName()
+    }
+
+    private fun getFallbackDeviceName(): String {
         val manufacturer = Build.MANUFACTURER
         val model = Build.MODEL
-        return if (model.startsWith(manufacturer)) {
-            model
-        } else {
-            "$manufacturer $model"
-        }
+        return if (model.startsWith(manufacturer, ignoreCase = true)) model else "$manufacturer $model"
     }
     
     /**

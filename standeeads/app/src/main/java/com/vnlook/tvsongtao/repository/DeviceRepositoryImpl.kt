@@ -252,15 +252,15 @@ class DeviceRepositoryImpl(private val context: Context) : DeviceRepository {
          * Get the device name (manufacturer and model)
          * @return Device name string
          */
-        fun getDeviceName(): String {
-            val manufacturer = Build.MANUFACTURER
-            val model = Build.MODEL
-            return if (model.startsWith(manufacturer)) {
-                model
-            } else {
-                "$manufacturer $model"
-            }
-        }
+//        fun getDeviceName(): String {
+//            val manufacturer = Build.MANUFACTURER
+//            val model = Build.MODEL
+//            return if (model.startsWith(manufacturer)) {
+//                model
+//            } else {
+//                "$manufacturer $model"
+//            }
+//        }
         
         /**
          * Create a map location point string in the format "POINT (longitude latitude)"
