@@ -1,11 +1,13 @@
 package com.vnlook.tvsongtao.usecase
 
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 //import android.widget.VideoView
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.vnlook.tvsongtao.DigitalClockActivity
 import com.vnlook.tvsongtao.MainActivity
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.utils.PlaylistScheduler
@@ -165,12 +167,22 @@ class VideoUseCase(
                 try {
                     // Get playlists from data manager using suspend function
                     val playlists = dataUseCase.getPlaylists()
-                    
+
                     if (playlists.isEmpty()) {
                         Log.w("VideoUseCase", "No playlists found")
+                        withContext(Dispatchers.Main) {
+                            try {
+                                val intent = Intent(activity, DigitalClockActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                }
+                                activity.startActivity(intent)
+                                Log.d("VideoUseCase", "Started DigitalClockActivity due to no playlists")
+                            } catch (e: Exception) {
+                                Log.e("VideoUseCase", "Error starting DigitalClockActivity: ${e.message}")
+                            }
+                        }
                         return@launch
                     }
-                    
                     // Initialize managers if not already done
                     if (!::playlistScheduler.isInitialized) {
                         playlistScheduler = PlaylistScheduler()
