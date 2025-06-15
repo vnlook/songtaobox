@@ -7,8 +7,12 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
+import com.google.android.gms.location.LocationServices
 import com.vnlook.tvsongtao.model.DeviceInfo
 import com.vnlook.tvsongtao.repository.DeviceRepository
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +32,15 @@ class DeviceInfoUtil(
     // Default location coordinates (used as fallback if actual location is not available)
     private val defaultLongitude = 106.1256638
     private val defaultLatitude = 11.2791636
+    
+    // Location permission request code
+    companion object {
+        const val LOCATION_PERMISSION_REQUEST_CODE = 1001
+        val REQUIRED_PERMISSIONS: Array<String> = arrayOf(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    }
     
     // Coordinates for actual device location
     private var actualLongitude = defaultLongitude
@@ -68,14 +81,19 @@ class DeviceInfoUtil(
                     val localDevice = deviceRepository.getDeviceInfo() ?: serverDevice
                     
                     // Force get new device coordinates (don't use cached values)
-                    getActualDeviceCoordinates(forceRefresh = true)
+                    val gotLocation = getActualDeviceCoordinates(forceRefresh = true)
                     
                     // Update only necessary fields with new coordinates
-                    val updatedDeviceInfo = localDevice.copy(
-                        active = true,
-                        location = getDeviceLocation(),
-                        mapLocation = createMapLocationPoint(actualLongitude, actualLatitude)
-                    )
+                    val updatedDeviceInfo = if (gotLocation) {
+                        localDevice.copy(
+                            active = true,
+                            location = getDeviceLocation(),
+                            mapLocation = createMapLocationPoint(actualLongitude, actualLatitude)
+                        )
+                    } else {
+                        // If we couldn't get location, keep the existing location
+                        localDevice.copy(active = true)
+                    }
                     
                     // Log the updated coordinates
                     Log.d(TAG, "Updating device with coordinates: $actualLongitude, $actualLatitude")
@@ -107,14 +125,19 @@ class DeviceInfoUtil(
                     
                     if (localDevice != null) {
                         // Force get new device coordinates (don't use cached values)
-                        getActualDeviceCoordinates(forceRefresh = true)
+                        val gotLocation = getActualDeviceCoordinates(forceRefresh = true)
                         
-                        // Update coordinates
-                        val updatedDeviceInfo = localDevice.copy(
-                            active = true,
-                            location = getDeviceLocation(),
-                            mapLocation = createMapLocationPoint(actualLongitude, actualLatitude)
-                        )
+                        // Update coordinates if we got them, otherwise keep existing
+                        val updatedDeviceInfo = if (gotLocation) {
+                            localDevice.copy(
+                                active = true,
+                                location = getDeviceLocation(),
+                                mapLocation = createMapLocationPoint(actualLongitude, actualLatitude)
+                            )
+                        } else {
+                            // If we couldn't get location, keep the existing location
+                            localDevice.copy(active = true)
+                        }
                         
                         // Create on server
                         Log.d(TAG, "Creating device on server with local info")
@@ -145,18 +168,29 @@ class DeviceInfoUtil(
         val deviceName = getDeviceName()
         
         // Get actual device coordinates
-        getActualDeviceCoordinates()
+        val gotLocation = getActualDeviceCoordinates()
         
-        val location = getDeviceLocation()
-        val mapLocation = createMapLocationPoint(actualLongitude, actualLatitude)
-        
-        return DeviceInfo(
-            deviceId = deviceId,
-            deviceName = deviceName,
-            location = location,
-            active = true,
-            mapLocation = mapLocation
-        )
+        return if (gotLocation) {
+            val location = getDeviceLocation()
+            val mapLocation = createMapLocationPoint(actualLongitude, actualLatitude)
+            
+            DeviceInfo(
+                deviceId = deviceId,
+                deviceName = deviceName,
+                location = location,
+                active = true,
+                mapLocation = mapLocation
+            )
+        } else {
+            // If we couldn't get location, create with empty location
+            DeviceInfo(
+                deviceId = deviceId,
+                deviceName = deviceName,
+                location = "",
+                active = true,
+                mapLocation = createMapLocationPoint(defaultLongitude, defaultLatitude)
+            )
+        }
     }
     
     /**
@@ -271,7 +305,12 @@ class DeviceInfoUtil(
      * - android.permission.ACCESS_FINE_LOCATION or
      * - android.permission.ACCESS_COARSE_LOCATION
      */
-    private fun getActualDeviceCoordinates(forceRefresh: Boolean = false) {
+    /**
+     * Try to get actual device coordinates using FusedLocationProviderClient
+     * @return Boolean indicating if location was successfully retrieved (or already had valid cached location)
+     */
+    @SuppressLint("MissingPermission")
+    private fun getActualDeviceCoordinates(forceRefresh: Boolean = false): Boolean {
         Log.d(TAG, "Attempting to get device coordinates, forceRefresh=$forceRefresh")
         
         val prefs = context.getSharedPreferences("device_location", Context.MODE_PRIVATE)
@@ -286,7 +325,7 @@ class DeviceInfoUtil(
                 actualLatitude = savedLat.toDouble()
                 actualLongitude = savedLong.toDouble()
                 Log.d(TAG, "Using saved coordinates: $actualLongitude, $actualLatitude")
-                return
+                return true
             }
         } else {
             Log.d(TAG, "Force refreshing coordinates - not using cached values")
@@ -304,74 +343,98 @@ class DeviceInfoUtil(
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         
         if (!hasFineLocationPermission && !hasCoarseLocationPermission) {
-            Log.w(TAG, "No location permissions granted. Add ACCESS_FINE_LOCATION or ACCESS_COARSE_LOCATION to AndroidManifest.xml")
-            // Use default coordinates since we don't have permission
-            actualLatitude = defaultLatitude
-            actualLongitude = defaultLongitude
-            Log.d(TAG, "Using default coordinates: $defaultLongitude, $defaultLatitude")
-            return
+            Log.w(TAG, "Location permissions not granted")
+            return false
         }
         
         try {
             val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
             
             // Check if location services are enabled
-            if (!LocationManagerCompat.isLocationEnabled(locationManager)) {
+            val isLocationEnabled = LocationManagerCompat.isLocationEnabled(locationManager)
+            Log.d(TAG, "Location services enabled: $isLocationEnabled")
+            
+            if (!isLocationEnabled) {
                 Log.d(TAG, "Location services are disabled")
                 actualLatitude = defaultLatitude
                 actualLongitude = defaultLongitude
-                return
+                return false
             }
             
-            // Try to get location from available providers
-            val providers = locationManager.getProviders(true)
-            if (providers.isEmpty()) {
-                Log.d(TAG, "No location providers available")
-                actualLatitude = defaultLatitude
-                actualLongitude = defaultLongitude
-                return
-            }
+            // Try to get last known location from FusedLocationProvider
+            val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
             
-            var bestLocation: Location? = null
+            // Create a CountDownLatch to wait for the location result
+            val latch = java.util.concurrent.CountDownLatch(1)
+            var success = false
             
-            for (provider in providers) {
-                try {
-                    @SuppressLint("MissingPermission") // We already checked permissions above
-                    val location = locationManager.getLastKnownLocation(provider)
-                    if (location != null) {
-                        Log.d(TAG, "Got location from provider: $provider")
-                        if (bestLocation == null || location.accuracy < bestLocation.accuracy) {
-                            bestLocation = location
+            fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+                location?.let {
+                    Log.d(TAG, "Got location from FusedLocationProvider: ${it.latitude}, ${it.longitude}")
+                    actualLatitude = it.latitude
+                    actualLongitude = it.longitude
+                    
+                    // Save to preferences for future use
+                    prefs.edit()
+                        .putFloat("last_latitude", actualLatitude.toFloat())
+                        .putFloat("last_longitude", actualLongitude.toFloat())
+                        .apply()
+                    success = true
+                } ?: run {
+                    Log.d(TAG, "No location available from FusedLocationProvider")
+                    // Fall back to last known location from location manager
+                    try {
+                        val lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                            ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+                            ?: locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
+                        
+                        lastKnownLocation?.let {
+                            actualLatitude = it.latitude
+                            actualLongitude = it.longitude
+                            Log.d(TAG, "Using last known location: $actualLongitude, $actualLatitude")
+                            
+                            prefs.edit()
+                                .putFloat("last_latitude", actualLatitude.toFloat())
+                                .putFloat("last_longitude", actualLongitude.toFloat())
+                                .apply()
+                            success = true
+                        } ?: run {
+                            Log.d(TAG, "No last known location available")
+                            actualLatitude = defaultLatitude
+                            actualLongitude = defaultLongitude
+                            success = false
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error getting last known location", e)
+                        actualLatitude = defaultLatitude
+                        actualLongitude = defaultLongitude
+                        success = false
                     }
-                } catch (e: SecurityException) {
-                    Log.e(TAG, "Security exception for provider $provider: ${e.message}")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error getting location from provider $provider: ${e.message}")
                 }
-            }
-            
-            // Update coordinates if we found a location
-            if (bestLocation != null) {
-                actualLatitude = bestLocation.latitude
-                actualLongitude = bestLocation.longitude
-                Log.d(TAG, "Using actual device coordinates: $actualLongitude, $actualLatitude")
-                
-                // Save to preferences for future use
-                prefs.edit()
-                    .putFloat("last_latitude", actualLatitude.toFloat())
-                    .putFloat("last_longitude", actualLongitude.toFloat())
-                    .apply()
-            } else {
-                Log.d(TAG, "No location found from any provider, using default coordinates")
+                latch.countDown()
+            }.addOnFailureListener { exception ->
+                Log.e(TAG, "Error getting location from FusedLocationProvider", exception)
                 actualLatitude = defaultLatitude
                 actualLongitude = defaultLongitude
+                success = false
+                latch.countDown()
             }
+            
+            // Wait for the location result with a timeout of 5 seconds
+            latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
+            
+            if (!success) {
+                Log.d(TAG, "Using default coordinates: $defaultLongitude, $defaultLatitude")
+            }
+            
+            return success
+            
         } catch (e: Exception) {
             Log.e(TAG, "Error getting device coordinates: ${e.message}")
             e.printStackTrace()
             actualLatitude = defaultLatitude
             actualLongitude = defaultLongitude
+            return false
         }
     }
     

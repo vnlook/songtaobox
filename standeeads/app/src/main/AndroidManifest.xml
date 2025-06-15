@@ -12,6 +12,8 @@
     <!-- Location permissions -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- For Android 10 (API 29) and above, you might need this too -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <!-- Permissions for Lock Task Mode (Kiosk Mode) -->
     <uses-permission android:name="android.permission.MANAGE_DEVICE_ADMINS" />

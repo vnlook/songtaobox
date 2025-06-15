@@ -3,6 +3,8 @@ package com.vnlook.tvsongtao
 import android.app.ActivityOptions
 import android.content.Intent
 import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,7 +15,10 @@ import android.view.WindowManager
 import android.widget.AnalogClock
 import android.widget.TextClock
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.repository.ChangelogRepository
 import com.vnlook.tvsongtao.repository.ChangelogRepositoryImpl
@@ -56,6 +61,23 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
     private val coroutineScope = CoroutineScope(Dispatchers.Main)
     
+    // Location permission launcher
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        // Handle permission results
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            // Permissions granted, proceed with location operations
+            initializeLocationDependentComponents()
+        } else {
+            // Permissions denied, show a message and continue without location
+            Toast.makeText(this, "Location permission is required for better functionality", 
+                Toast.LENGTH_LONG).show()
+            initializeLocationDependentComponents()
+        }
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Set full screen
@@ -96,6 +118,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         // Initialize device repository and util
         deviceRepository = DeviceRepositoryImpl(this)
         deviceInfoUtil = DeviceInfoUtil(this, deviceRepository)
+        
+        // Check and request location permissions
+        checkLocationPermissions()
         
         // Initialize permission use case
         permissionUseCase = PermissionUseCase(this)
@@ -144,6 +169,38 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
      * Register device information with the API
      * Creates a new device if it doesn't exist, or updates an existing one
      */
+    private fun checkLocationPermissions() {
+        val permissionsToRequest = mutableListOf<String>()
+        
+        // Check which permissions we need to request
+        DeviceInfoUtil.REQUIRED_PERMISSIONS.forEach { permission ->
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    permission
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionsToRequest.add(permission)
+            }
+        }
+        
+        if (permissionsToRequest.isNotEmpty()) {
+            // Request missing permissions
+            requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+        } else {
+            // All permissions already granted, proceed with location operations
+            initializeLocationDependentComponents()
+        }
+    }
+    
+    private fun initializeLocationDependentComponents() {
+        // Initialize components that require location here
+        // For now, just call checkForPlaylists
+        checkCompareAndDownloadPlaylists()
+        
+        // Also register device info which might use location
+        registerDeviceInfo()
+    }
+    
     private fun registerDeviceInfo() {
         Log.d(TAG, "Checking if device info needs to be registered")
         
