@@ -46,7 +46,7 @@ class PlaylistRepositoryImpl(private val context: Context) : PlaylistRepository 
         val deviceRepository = DeviceRepositoryImpl(context)
         val deviceInfo = deviceRepository.getDeviceInfo()
         // Filter playlists based on device orientation and portrait field
-        val filteredPlaylists = playlists.filter { it.portrait == isPortrait && it.deviceId == deviceInfo?.deviceId && it.deviceName == deviceInfo?.deviceName && it.deviceName != null }
+        val filteredPlaylists = playlists.filter { it.deviceId == deviceInfo?.deviceId && it.deviceName == deviceInfo?.deviceName && it.deviceName != null }
         Log.d(TAG, "Filtered playlists based on orientation: ${filteredPlaylists.size} of ${playlists.size}")
         return filteredPlaylists
     }

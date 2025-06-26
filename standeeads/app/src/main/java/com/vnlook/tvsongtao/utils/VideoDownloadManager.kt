@@ -23,6 +23,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 
 class VideoDownloadManager(private val context: Context) {
     private val playlistRepository: PlaylistRepository = PlaylistRepositoryImpl(context)
@@ -170,22 +174,72 @@ class VideoDownloadManager(private val context: Context) {
 
         destinationFile.parentFile?.mkdirs()
 
-        val request = DownloadManager.Request(Uri.parse(videoUrl))
-            .setTitle("Downloading video $videoUrl")
-            .setDescription("Downloading $videoUrl")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationUri(Uri.fromFile(destinationFile))
-
         try {
-            val downloadId = downloadManager.enqueue(request)
-            downloadIds[downloadId] = videoUrl
-            Log.d(TAG, "Started download for video ${videoUrl}, downloadId: $downloadId, path: $destinationPath")
+            // Use direct download with SSL configuration instead of DownloadManager
+            coroutineScope.launch {
+                try {
+                    val url = URL(videoUrl)
+                    val connection = url.openConnection() as HttpsURLConnection
+                    
+                    // Configure SSL
+                    connection.setRequestProperty("User-Agent", "Apidog/1.0.0 (https://apidog.com)")
+                    connection.setRequestProperty("Accept", "*/*")
+                    connection.setRequestProperty("Host", "ledgiaodich.vienthongtayninh.vn:3030")
+                    connection.setRequestProperty("Connection", "keep-alive")
+                    
+                    // Set timeouts
+                    connection.connectTimeout = 30000
+                    connection.readTimeout = 30000
+
+                    val responseCode = connection.responseCode
+                    if (responseCode == HttpURLConnection.HTTP_OK) {
+                        val contentLength = connection.contentLength
+                        var bytesDownloaded = 0L
+
+                        FileOutputStream(destinationFile).use { output ->
+                            connection.inputStream.use { input ->
+                                val buffer = ByteArray(8192)
+                                var bytes = input.read(buffer)
+                                while (bytes >= 0) {
+                                    output.write(buffer, 0, bytes)
+                                    bytesDownloaded += bytes
+                                    bytes = input.read(buffer)
+
+                                    // Update progress
+                                    if (contentLength > 0) {
+                                        val progress = (bytesDownloaded * 100 / contentLength).toInt()
+                                        withContext(Dispatchers.Main) {
+                                            downloadListener?.onProgressUpdate(completedDownloads, totalDownloads, progress)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Download completed successfully
+                        Log.d(TAG, "Video downloaded successfully: $videoUrl")
+                        dataManager.updateVideoDownloadStatus(videoUrl, true, destinationPath)
+                        completedDownloads++
+                        notifyProgressUpdate()
+                        downloadNextVideo()
+                    } else {
+                        Log.e(TAG, "Failed to download video. Response code: $responseCode")
+                        // Skip this video and try the next one
+                        downloadNextVideo()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error downloading video $videoUrl: ${e.message}")
+                    e.printStackTrace()
+                    // Skip this video and try the next one
+                    downloadNextVideo()
+                }
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error downloading video ${videoUrl}: ${e.message}")
+            Log.e(TAG, "Error setting up video download for $videoUrl: ${e.message}")
+            e.printStackTrace()
+            downloadNextVideo()
         }
     }
-
-
 
     private fun startProgressMonitoring() {
         if (!progressMonitorRunning) {
@@ -198,7 +252,6 @@ class VideoDownloadManager(private val context: Context) {
         progressMonitorRunning = false
         handler.removeCallbacks(progressMonitorRunnable)
     }
-
 
     private fun updateDownloadProgress() {
         var progressPercent = 0
@@ -269,15 +322,12 @@ class VideoDownloadManager(private val context: Context) {
             progressPercent = if (completedDownloads == totalDownloads && totalDownloads > 0) 100 else 0
         }
 
-
-
         Log.d(TAG, "Download progress: $completedDownloads/$totalDownloads - $progressPercent%")
         if (completedDownloads == totalDownloads) {
             onAllDownloadsComplete()
         } else {
             downloadListener?.onProgressUpdate(completedDownloads, totalDownloads, progressPercent)
         }
-
     }
 
     private fun notifyProgressUpdate() {
