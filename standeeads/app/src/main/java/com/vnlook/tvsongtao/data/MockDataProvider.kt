@@ -16,7 +16,7 @@ object MockDataProvider {
             Video(
                 id = "video_02",
                 name = "Quảng Cáo B",
-                url = "https://songtao.vnlook.com/assets/0a352f85-0d29-410c-84eb-a3768d546380.mp4",
+                url = "https://ledgiaodich.vienthongtayninh.vn:3030/assets/0a352f85-0d29-410c-84eb-a3768d546380.mp4",
                 isDownloaded = false
             )
         )

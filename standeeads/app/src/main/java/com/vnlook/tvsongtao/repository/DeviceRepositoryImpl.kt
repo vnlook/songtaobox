@@ -36,7 +36,7 @@ class DeviceRepositoryImpl(private val context: Context) : DeviceRepository {
      */
     override suspend fun createDevice(deviceInfo: DeviceInfo): DeviceInfo? {
         try {
-            val apiUrl = "https://songtao.vnlook.com/items/play_device"
+            val apiUrl = "https://ledgiaodich.vienthongtayninh.vn:3030/items/play_device"
             val url = URL(apiUrl)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "POST"
@@ -92,7 +92,7 @@ class DeviceRepositoryImpl(private val context: Context) : DeviceRepository {
      */
     override suspend fun updateDevice(deviceInfo: DeviceInfo): DeviceInfo? {
         try {
-            val apiUrl = "https://songtao.vnlook.com/items/play_device/${deviceInfo.id}"
+            val apiUrl = "https://ledgiaodich.vienthongtayninh.vn:3030/items/play_device/${deviceInfo.id}"
             val url = URL(apiUrl)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "PATCH"
@@ -183,7 +183,7 @@ class DeviceRepositoryImpl(private val context: Context) : DeviceRepository {
      */
     override suspend fun getListDevices(): List<DeviceInfo> {
         try {
-            val apiUrl = "https://songtao.vnlook.com/items/play_device"
+            val apiUrl = "https://ledgiaodich.vienthongtayninh.vn:3030/items/play_device"
             val url = URL(apiUrl)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"

@@ -60,7 +60,7 @@ object VNLApiResponseParser {
             }
             
             // Log the API response format
-            Log.d(TAG, "API Response format matches curl command: curl --location --request GET 'https://songtao.vnlook.com/items/media_playlist?fields=id,title,active,order,beginTime,endTime,assets.media_assets_id.title,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download'")
+            Log.d(TAG, "API Response format matches curl command: curl --location --request GET 'https://ledgiaodich.vienthongtayninh.vn:3030/items/media_playlist?fields=id,title,active,order,beginTime,endTime,assets.media_assets_id.title,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download'")
             
             val type = object : TypeToken<VNLApiResponse>() {}.type
             val apiResponse: VNLApiResponse
@@ -90,7 +90,7 @@ object VNLApiResponseParser {
                         }
                         
                         val videoName = mediaAsset.title ?: "Untitled Video"
-                        val baseUrl = mediaAsset.fileUrl ?: "https://songtao.vnlook.com/assets"
+                        val baseUrl = mediaAsset.fileUrl ?: "https://ledgiaodich.vienthongtayninh.vn:3030/assets"
                         val fileName = mediaAsset.file.filenameDisk
                         if (fileName == null) {
                             Log.w(TAG, "Skipping video ${videoId} with null filename in playlist ${playlistData.id}")

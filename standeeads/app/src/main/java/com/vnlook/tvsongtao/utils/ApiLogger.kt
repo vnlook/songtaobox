@@ -34,12 +34,12 @@ object ApiLogger {
      * Log VNL API request based on the curl command
      */
     fun logVNLApiRequest() {
-        val url = "https://songtao.vnlook.com/items/media_playlist?fields=id,title,active,order,beginTime,endTime,assets.media_assets_id.title,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download"
+        val url = "https://ledgiaodich.vienthongtayninh.vn:3030/items/media_playlist?fields=id,title,active,order,beginTime,endTime,assets.media_assets_id.title,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download"
         val method = "GET"
         val headers = mapOf(
             "User-Agent" to "Apidog/1.0.0 (https://apidog.com)",
             "Accept" to "*/*",
-            "Host" to "songtao.vnlook.com",
+            "Host" to "ledgiaodich.vienthongtayninh.vn:3030",
             "Connection" to "keep-alive"
         )
         

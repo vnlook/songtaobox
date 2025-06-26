@@ -15,7 +15,7 @@ import java.net.URL
 object VNLApiClient {
     private const val TAG = "VNLApiClient"
     
-    private const val API_URL = "https://songtao.vnlook.com/items/media_playlist"
+    private const val API_URL = "https://ledgiaodich.vienthongtayninh.vn:3030/items/media_playlist"
     private const val API_FIELDS = "id,title,active,order,beginTime,endTime,portrait,device.device_id,device.device_name,assets.media_assets_id.title,assets.media_assets_id.id,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download"
     
     /**
@@ -32,7 +32,7 @@ object VNLApiClient {
             val headers = mapOf(
                 "User-Agent" to "Apidog/1.0.0 (https://apidog.com)",
                 "Accept" to "*/*",
-                "Host" to "songtao.vnlook.com",
+                "Host" to "ledgiaodich.vienthongtayninh.vn:3030",
                 "Connection" to "keep-alive"
             )
             ApiLogger.logRequest(urlString, "GET", headers)
@@ -44,7 +44,7 @@ object VNLApiClient {
             // Set headers
             connection.setRequestProperty("User-Agent", "Apidog/1.0.0 (https://apidog.com)")
             connection.setRequestProperty("Accept", "*/*")
-            connection.setRequestProperty("Host", "songtao.vnlook.com")
+            connection.setRequestProperty("Host", "ledgiaodich.vienthongtayninh.vn:3030")
             connection.setRequestProperty("Connection", "keep-alive")
             
             // Set timeouts

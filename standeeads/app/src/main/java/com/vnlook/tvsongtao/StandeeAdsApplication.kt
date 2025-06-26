@@ -13,6 +13,7 @@ import com.vnlook.tvsongtao.usecase.PermissionUseCase
 import com.vnlook.tvsongtao.utils.ChangelogChecker
 import com.vnlook.tvsongtao.utils.ChangelogSchedulerJob
 import com.vnlook.tvsongtao.utils.DeviceInfoUtil
+import com.vnlook.tvsongtao.utils.SSLConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -44,6 +45,9 @@ class StandeeAdsApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         appContext = applicationContext
+        
+        // Configure SSL for development
+        SSLConfig.configureDevSSL()
         
         // Set up global error handler
         setupUncaughtExceptionHandler()

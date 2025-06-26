@@ -21,7 +21,7 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
     private val TAG = "ChangelogRepository"
     private val gson = Gson()
     
-    private val API_URL = "https://songtao.vnlook.com/items/changelog"
+    private val API_URL = "https://ledgiaodich.vienthongtayninh.vn:3030/items/changelog"
     private val API_PARAMS = "limit=1&sort=-date_created"
     
     /**
@@ -37,7 +37,7 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
             val headers = mapOf(
                 "User-Agent" to "Apidog/1.0.0 (https://apidog.com)",
                 "Accept" to "application/json",
-                "Host" to "songtao.vnlook.com",
+                "Host" to "ledgiaodich.vienthongtayninh.vn:3030",
                 "Connection" to "keep-alive"
             )
             ApiLogger.logRequest(urlString, "GET", headers)
@@ -49,7 +49,7 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
             // Set headers
             connection.setRequestProperty("User-Agent", "Apidog/1.0.0 (https://apidog.com)")
             connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("Host", "songtao.vnlook.com")
+            connection.setRequestProperty("Host", "ledgiaodich.vienthongtayninh.vn:3030")
             connection.setRequestProperty("Connection", "keep-alive")
             
             // Set timeouts
