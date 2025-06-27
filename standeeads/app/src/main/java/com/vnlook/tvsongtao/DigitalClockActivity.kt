@@ -228,14 +228,14 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
             if (!::videoDownloadManager.isInitialized) {
                 videoDownloadManager = VideoDownloadManager(this)
                 videoDownloadManager.setDownloadListener(this)
-                videoDownloadManager.initializeVideoDownload(this)
             }
-            Log.d(TAG, "Start download Playlist")
-            // Start download process
+            
+            Log.d(TAG, "Starting playlist check with network awareness")
+            // Use the new network-aware initialization
+            videoDownloadManager.initializeVideoDownloadWithNetworkCheck(this)
             
             // Don't check for changelog updates when app is first opened
             // The scheduler job will handle periodic checks
-
 
         } catch (e: Exception) {
             Log.e(TAG, "Error checking for playlists: ${e.message}")
@@ -265,9 +265,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
                         }
                         videoDownloadManager = VideoDownloadManager(this@DigitalClockActivity)
                         videoDownloadManager.setDownloadListener(this@DigitalClockActivity)
-                        videoDownloadManager.initializeVideoDownload(this@DigitalClockActivity)
+                        videoDownloadManager.initializeVideoDownloadWithNetworkCheck(this@DigitalClockActivity)
                         
-                        Log.d(TAG, "Playlists reloaded due to changelog updates")
+                        Log.d(TAG, "Playlists reloaded due to changelog updates with network check")
                     }
                 } else {
                     Log.d(TAG, "No changelog updates detected")

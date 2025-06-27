@@ -66,6 +66,188 @@ class VideoDownloadManager(private val context: Context) {
         this.downloadListener = listener
     }
 
+    /**
+     * Initialize video download with network check
+     * If network is available, download new playlists and clean up old videos
+     * If no network, use cached playlists
+     */
+    fun initializeVideoDownloadWithNetworkCheck(listener: VideoDownloadManagerListener?) {
+        if (isInitializing) {
+            Log.d(TAG, "Video download initialization already in progress, skipping")
+            return
+        }
+        
+        this.downloadListener = listener
+        isInitializing = true
+        
+        coroutineScope.launch {
+            try {
+                val hasNetwork = NetworkUtil.isNetworkAvailable(context)
+                val networkType = NetworkUtil.getNetworkTypeDescription(context)
+                Log.d(TAG, "Network status: $hasNetwork ($networkType)")
+                
+                if (hasNetwork) {
+                    // Online: Download new playlists and clean up old videos
+                    initializeOnlineMode()
+                } else {
+                    // Offline: Use cached playlists
+                    initializeOfflineMode()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in network-aware initialization: ${e.message}")
+                e.printStackTrace()
+                // Fallback to offline mode
+                try {
+                    initializeOfflineMode()
+                } catch (offlineError: Exception) {
+                    Log.e(TAG, "Error in offline fallback: ${offlineError.message}")
+                    withContext(Dispatchers.Main) {
+                        downloadListener?.onAllDownloadsCompleted()
+                    }
+                }
+            } finally {
+                isInitializing = false
+            }
+        }
+    }
+    
+    /**
+     * Initialize in online mode - download new playlists and clean up
+     */
+    private suspend fun initializeOnlineMode() {
+        Log.d(TAG, "Initializing in online mode - downloading new playlists")
+        
+        // Get new playlists from API
+        val newPlaylists = playlistRepository.getPlaylists()
+        Log.d(TAG, "Retrieved ${newPlaylists.size} playlists from API")
+        
+        // Get new videos from API
+        val newVideos: List<Video>
+        val apiResponse = VNLApiClient.getPlaylists()
+        
+        if (!apiResponse.isNullOrEmpty()) {
+            val (_, videos) = VNLApiResponseParser.parseApiResponse(apiResponse)
+            newVideos = videos
+            Log.d(TAG, "Retrieved ${newVideos.size} videos from API")
+        } else {
+            Log.w(TAG, "API call failed, falling back to offline mode")
+            initializeOfflineMode()
+            return
+        }
+        
+        // Get old playlists for comparison
+        val oldPlaylists = dataManager.getPlaylists()
+        
+        // Merge videos (this will automatically delete invalid video files)
+        val mergedVideos = dataManager.mergeVideos(newVideos)
+        dataManager.saveVideos(mergedVideos)
+        
+        // Update playlists if changed
+        if (downloadHelper.checkIfPlaylistsNeedUpdate(newPlaylists, oldPlaylists)) {
+            Log.d(TAG, "Playlists have changed, updating cache")
+            dataManager.savePlaylists(newPlaylists)
+            cleanupInvalidVideoFiles(newVideos)
+        } else {
+            Log.d(TAG, "Playlists unchanged, keeping existing data")
+        }
+        
+        // Start downloading new videos
+        val videosToDownload = downloadHelper.getVideosToDownload(mergedVideos)
+        Log.d(TAG, "Found ${videosToDownload.size} videos to download")
+        
+        if (videosToDownload.isEmpty()) {
+            Log.d(TAG, "All videos already downloaded, notifying completion")
+            withContext(Dispatchers.Main) {
+                downloadListener?.onAllDownloadsCompleted()
+            }
+        } else {
+            totalDownloads = videosToDownload.map { it.url }.distinct().size
+            completedDownloads = 0
+            startProgressMonitoring()
+            downloadVideos(videosToDownload)
+        }
+    }
+    
+    /**
+     * Initialize in offline mode - use cached playlists and videos
+     */
+    private suspend fun initializeOfflineMode() {
+        Log.d(TAG, "Initializing in offline mode - using cached data")
+        
+        // Get cached playlists and videos
+        val cachedPlaylists = dataManager.getPlaylists()
+        val cachedVideos = dataManager.getVideos()
+        
+        Log.d(TAG, "Found ${cachedPlaylists.size} cached playlists and ${cachedVideos.size} cached videos")
+        
+        if (cachedPlaylists.isEmpty()) {
+            Log.w(TAG, "No cached playlists available in offline mode")
+            withContext(Dispatchers.Main) {
+                downloadListener?.onAllDownloadsCompleted()
+            }
+            return
+        }
+        
+        // Check which cached videos are actually available locally
+        val availableVideos = cachedVideos.filter { video ->
+            if (video.isDownloaded && !video.localPath.isNullOrEmpty()) {
+                val file = File(video.localPath!!)
+                val exists = file.exists() && file.length() > 0
+                if (!exists) {
+                    Log.d(TAG, "Cached video ${video.id} file not found: ${video.localPath}")
+                }
+                exists
+            } else {
+                false
+            }
+        }
+        
+        Log.d(TAG, "Found ${availableVideos.size} available videos in offline mode")
+        
+        // Update videos list to reflect only available videos
+        dataManager.saveVideos(availableVideos)
+        
+        // Notify completion immediately since we're using cached data
+        withContext(Dispatchers.Main) {
+            downloadListener?.onVideoReady(cachedPlaylists)
+            downloadListener?.onAllDownloadsCompleted()
+        }
+    }
+    
+    /**
+     * Clean up video files that are no longer valid according to current playlists
+     */
+    private fun cleanupInvalidVideoFiles(validVideos: List<Video>) {
+        try {
+            val validVideoUrls = validVideos.map { it.url }.toSet()
+            val moviesDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+            
+            if (moviesDir != null && moviesDir.exists()) {
+                val files = moviesDir.listFiles()
+                files?.forEach { file ->
+                    if (file.isFile) {
+                        // Check if this file corresponds to any valid video
+                        val isValid = validVideoUrls.any { url ->
+                            downloadHelper.extractFilenameFromUrl(url) == file.name
+                        }
+                        
+                        if (!isValid) {
+                            val deleted = file.delete()
+                            if (deleted) {
+                                Log.d(TAG, "Deleted invalid video file: ${file.absolutePath}")
+                            } else {
+                                Log.w(TAG, "Failed to delete invalid video file: ${file.absolutePath}")
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up invalid video files: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
     fun initializeVideoDownload(listener: VideoDownloadManagerListener?) {
         if (isInitializing) {
             Log.d(TAG, "Video download initialization already in progress, skipping")
