@@ -108,17 +108,11 @@ class VideoUseCase(
                     
                     Log.d("VideoUseCase", "Loaded ${videos.size} videos and ${playlists.size} playlists")
                     
-                    // Start downloading videos
-                    if (videos.isNotEmpty()) {
-                        withContext(Dispatchers.Main) {
-                            videoDownloadManager.downloadVideos(videos)
-                        }
-                    } else {
-                        Log.w("VideoUseCase", "No videos found to download")
-                        withContext(Dispatchers.Main) {
-                            onAllDownloadsCompleted()
-                        }
-                    }
+                    // Download videos if needed
+                    Log.d("VideoUseCase", "Starting video download process...")
+                    
+                    // Use the public initialization method instead
+                    videoDownloadManager.initializeVideoDownloadWithNetworkCheck(this@VideoUseCase)
                 } catch (e: Exception) {
                     Log.e("VideoUseCase", "Error loading data: ${e.message}")
                     e.printStackTrace()
@@ -172,13 +166,21 @@ class VideoUseCase(
                         Log.w("VideoUseCase", "No playlists found")
                         withContext(Dispatchers.Main) {
                             try {
-                                val intent = Intent(activity, DigitalClockActivity::class.java).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                // REMOVED: Don't start new activity as it causes destroy/recreate loop
+                                // val intent = Intent(activity, DigitalClockActivity::class.java).apply {
+                                //     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                // }
+                                // activity.startActivity(intent)
+                                Log.d("VideoUseCase", "No playlists found - staying in current activity to avoid destroy/recreate loop")
+                                
+                                // Just show status instead of changing activity
+                                try {
+                                    uiUseCase.showStatus("Không có playlist nào để phát")
+                                } catch (e: Exception) {
+                                    Log.e("VideoUseCase", "Error showing status: ${e.message}")
                                 }
-                                activity.startActivity(intent)
-                                Log.d("VideoUseCase", "Started DigitalClockActivity due to no playlists")
                             } catch (e: Exception) {
-                                Log.e("VideoUseCase", "Error starting DigitalClockActivity: ${e.message}")
+                                Log.e("VideoUseCase", "Error handling no playlists case: ${e.message}")
                             }
                         }
                         return@launch
@@ -191,12 +193,30 @@ class VideoUseCase(
                     Log.d("VideoUseCase", "checkAndPlayCurrentPlaylist called, isDownloadComplete=$isDownloadComplete")
                     
                     if (!isDownloadComplete) {
-                        // Don't try to play videos until downloads are complete
-                        Log.d("VideoUseCase", "Downloads not complete yet, not playing videos")
-                        withContext(Dispatchers.Main) {
-                            uiUseCase.showStatus("Đang chờ tải xong video...")
+                        // Check if we have any local videos available before showing "waiting" message
+                        val videos = dataUseCase.getVideos()
+                        val localVideos = videos.filter { video ->
+                            video.isDownloaded && 
+                            !video.localPath.isNullOrEmpty() &&
+                            java.io.File(video.localPath!!).exists()
                         }
-                        return@launch
+                        
+                        if (localVideos.isNotEmpty()) {
+                            Log.d("VideoUseCase", "✅ Found ${localVideos.size} local videos available on disk, proceeding with playback")
+                            // We have local videos, mark as complete and continue
+                            isDownloadComplete = true
+                        } else {
+                            // No local videos available, show waiting message
+                            Log.d("VideoUseCase", "🚫 No local videos available on disk, waiting for downloads")
+                            withContext(Dispatchers.Main) {
+                                try {
+                                    uiUseCase.showStatus("Đang chờ tải xong video...")
+                                } catch (e: Exception) {
+                                    Log.e("VideoUseCase", "Error showing status: ${e.message}")
+                                }
+                            }
+                            return@launch
+                        }
                     }
                     
                     val currentPlaylist = playlistScheduler.getCurrentPlaylist(playlists)
@@ -209,7 +229,11 @@ class VideoUseCase(
                                 if (::videoPlayer.isInitialized) {
                                     videoPlayer.stop()
                                 }
-                                uiUseCase.showStatus("Không có playlist nào cần phát vào lúc ${LocalTime.now()}")
+                                try {
+                                    uiUseCase.showStatus("Không có playlist nào cần phát vào lúc ${LocalTime.now()}")
+                                } catch (e: Exception) {
+                                    Log.e("VideoUseCase", "Error showing status: ${e.message}")
+                                }
                             } catch (e: Exception) {
                                 Log.e("VideoUseCase", "Error handling no playlist case: ${e.message}")
                             }
@@ -227,6 +251,22 @@ class VideoUseCase(
                     
                     if (playlistVideos.isEmpty()) {
                         Log.w("VideoUseCase", "No videos found for playlist ${currentPlaylist.id}")
+                        withContext(Dispatchers.Main) {
+                            try {
+                                // Check if videos exist but are not downloaded
+                                val allVideos = dataUseCase.getVideos()
+                                val playlistVideoIds = currentPlaylist.videoIds
+                                val hasVideosInPlaylist = allVideos.any { playlistVideoIds.contains(it.id) }
+                                
+                                if (hasVideosInPlaylist) {
+                                    uiUseCase.showStatus("Video của playlist chưa được tải xuống")
+                                } else {
+                                    uiUseCase.showStatus("Playlist ${currentPlaylist.id} không có video nào")
+                                }
+                            } catch (e: Exception) {
+                                Log.e("VideoUseCase", "Error showing playlist status: ${e.message}")
+                            }
+                        }
                         return@launch
                     }
                     
@@ -251,7 +291,11 @@ class VideoUseCase(
                     withContext(Dispatchers.Main) {
                         try {
                             // Hide loading UI
-                            uiUseCase.hideLoading(videoView)
+                            try {
+                                uiUseCase.hideLoading(videoView)
+                            } catch (e: Exception) {
+                                Log.e("VideoUseCase", "Error hiding loading UI: ${e.message}")
+                            }
                             
                             // Play the playlist
                             Log.d("VideoUseCase", "Starting to play playlist: ${currentPlaylist.id}")
@@ -270,7 +314,11 @@ class VideoUseCase(
             Log.e("VideoUseCase", "Error in checkAndPlayCurrentPlaylist: ${e.message}")
             e.printStackTrace()
             activity.runOnUiThread {
-                uiUseCase.showToast("Lỗi khi phát video: ${e.message}")
+                try {
+                    uiUseCase.showToast("Lỗi khi phát video: ${e.message}")
+                } catch (e: Exception) {
+                    Log.e("VideoUseCase", "Error showing toast: ${e.message}")
+                }
             }
         }
     }
@@ -290,7 +338,11 @@ class VideoUseCase(
         } catch (e: Exception) {
             Log.e("VideoUseCase", "Error in initializeApp: ${e.message}")
             e.printStackTrace()
-            uiUseCase.showStatus("Lỗi khởi tạo: ${e.message}")
+            try {
+                uiUseCase.showStatus("Lỗi khởi tạo: ${e.message}")
+            } catch (e: Exception) {
+                Log.e("VideoUseCase", "Error showing status: ${e.message}")
+            }
         }
     }
     
@@ -418,11 +470,22 @@ class VideoUseCase(
             Log.d("VideoUseCase", "Videos ready for playback, received ${playlists.size} playlists")
             videosLoaded = true
             
+            // ✅ IMPORTANT: Mark as download complete when videos are ready
+            // This handles both online downloads and offline cached videos
+            isDownloadComplete = true
+            
             activity.runOnUiThread {
                 // Hide loading UI
                 uiUseCase.hideLoading(videoView)
                 
-                // Start playing videos
+                // Update status to indicate ready
+                if (playlists.isNotEmpty()) {
+                    uiUseCase.showStatus("Đã sẵn sàng phát video")
+                } else {
+                    uiUseCase.showStatus("Không có playlist nào để phát")
+                }
+                
+                // Start playing videos immediately
                 checkAndPlayCurrentPlaylist()
             }
         } catch (e: Exception) {

@@ -17,9 +17,10 @@ import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
- * JobService to periodically check for changes in the changelog API
+ * Job scheduler for checking changelog updates periodically
  */
 class ChangelogSchedulerJob : JobService() {
     private val TAG = "ChangelogSchedulerJob"
@@ -27,46 +28,29 @@ class ChangelogSchedulerJob : JobService() {
     
     companion object {
         private const val JOB_ID = 1001
+        private const val TAG = "ChangelogSchedulerJob"
 //        private const val INTERVAL_MS = 60 * 60 * 1000L // 1 hour
         private const val INTERVAL_MS = 15 * 60 * 1000L // 1 hour
 
         /**
-         * Schedule the job to run periodically
-         * @param context Application context
+         * Schedule the changelog job to run every 15 minutes
          */
         fun schedule(context: Context) {
             val jobScheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
             
-            // Check if the job is already scheduled
-            val existingJob = jobScheduler.getPendingJob(JOB_ID)
-            if (existingJob != null) {
-                Log.d("ChangelogSchedulerJob", "Job already scheduled")
-                return
-            }
+            val jobInfo = JobInfo.Builder(JOB_ID, ComponentName(context, ChangelogSchedulerJob::class.java))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setPersisted(true)
+                .setPeriodic(15 * 60 * 1000L) // 15 minutes
+                .setRequiresCharging(false)
+                .setRequiresDeviceIdle(false)
+                .build()
             
-            val componentName = ComponentName(context, ChangelogSchedulerJob::class.java)
-            
-            // For API level 24 and above, there's a minimum period constraint
-            val jobInfoBuilder = JobInfo.Builder(JOB_ID, componentName)
-                .setPersisted(true) // Job persists across reboots
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY) // Requires network connection
-            
-            // For testing with short intervals, use minimum allowed interval
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                // For Android 7.0 (API 24) and higher, minimum is 15 minutes
-                jobInfoBuilder.setPeriodic(JobInfo.getMinPeriodMillis())
+            val result = jobScheduler.schedule(jobInfo)
+            if (result == JobScheduler.RESULT_SUCCESS) {
+                Log.d(TAG, "✅ Changelog job scheduled successfully (every 15 minutes)")
             } else {
-                // For older versions, we can use our custom interval
-                jobInfoBuilder.setPeriodic(INTERVAL_MS)
-            }
-            
-            val jobInfo = jobInfoBuilder.build()
-            
-            val resultCode = jobScheduler.schedule(jobInfo)
-            if (resultCode == JobScheduler.RESULT_SUCCESS) {
-                Log.d("ChangelogSchedulerJob", "Job scheduled successfully")
-            } else {
-                Log.e("ChangelogSchedulerJob", "Failed to schedule job")
+                Log.e(TAG, "❌ Failed to schedule changelog job")
             }
         }
         
@@ -82,51 +66,100 @@ class ChangelogSchedulerJob : JobService() {
     }
     
     override fun onStartJob(params: JobParameters?): Boolean {
-        Log.d(TAG, "Job started")
+        Log.d(TAG, "🔄 Changelog scheduler job started (every 15 minutes)")
         
-        // Run the job in a coroutine to avoid blocking the main thread
-        coroutineScope.launch {
+        // Check network connectivity first
+        if (!NetworkUtil.isNetworkAvailable(applicationContext)) {
+            Log.d(TAG, "🚫 No network available, skipping changelog job")
+            jobFinished(params, false)
+            return false
+        }
+        
+        Log.d(TAG, "📡 Network available, checking for changelog updates in background thread...")
+        
+        // Run the job in background thread using coroutines (better than Thread)
+        coroutineScope.launch(Dispatchers.IO) {
             try {
-                // Create changelog repository and util
-                val changelogRepository: ChangelogRepository = ChangelogRepositoryImpl(applicationContext)
+                Log.d(TAG, "🔄 Running changelog job in background IO thread")
+                
+                val changelogRepository = ChangelogRepositoryImpl(applicationContext)
                 val changelogUtil = ChangelogUtil(applicationContext, changelogRepository)
                 
-                // Create device repository and util
-                val deviceRepository: DeviceRepository = DeviceRepositoryImpl(applicationContext)
-                val deviceInfoUtil = DeviceInfoUtil(applicationContext, deviceRepository)
-                
-                // Update device info in the background
-                Log.d(TAG, "Updating device info")
-                val deviceInfoResult = deviceInfoUtil.registerOrUpdateDevice()
-                Log.d(TAG, "Device info update result: $deviceInfoResult")
-                
-                // Check for changelog changes
-                val hasChanges = changelogUtil.checkChange()
-                
-                if (hasChanges) {
-                    Log.d(TAG, "Changes detected, reloading playlists")
-                    reloadPlaylists()
-                } else {
-                    Log.d(TAG, "No changes detected")
+                // Check if there are changes with timeout protection
+                val hasChanges = try {
+                    changelogUtil.checkChange()
+                } catch (e: java.net.SocketTimeoutException) {
+                    Log.w(TAG, "⏱️ Changelog check timeout in scheduler - skipping")
+                    jobFinished(params, false)
+                    return@launch
+                } catch (e: java.net.ConnectException) {
+                    Log.w(TAG, "🔌 Changelog check connection failed in scheduler - skipping")
+                    jobFinished(params, false)
+                    return@launch
+                } catch (e: java.io.IOException) {
+                    Log.w(TAG, "🌐 Changelog check network error in scheduler - skipping: ${e.message}")
+                    jobFinished(params, false)
+                    return@launch
+                } catch (e: Exception) {
+                    Log.w(TAG, "❌ Changelog check error in scheduler - skipping: ${e.message}")
+                    jobFinished(params, false)
+                    return@launch
                 }
                 
-                // Job finished
-                jobFinished(params, false)
+                if (hasChanges) {
+                    Log.d(TAG, "📝 Changelog updates detected, refreshing data in background (no activity reload)")
+                    
+                    // Only refresh VideoDownloadManager in background, don't restart activities
+                    try {
+                        val videoDownloadManager = VideoDownloadManager(applicationContext)
+                        videoDownloadManager.initializeVideoDownloadWithNetworkCheck(null)
+                        Log.d(TAG, "✅ Background data refresh initiated from scheduler")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ Error refreshing data in scheduler: ${e.message}")
+                    }
+                    
+                } else {
+                    Log.d(TAG, "📭 No changelog updates detected")
+                }
+                
+                // Also register device info if network is available
+                try {
+                    Log.d(TAG, "📱 Updating device info in background...")
+                    val deviceRepository = DeviceRepositoryImpl(applicationContext)
+                    val deviceInfoUtil = DeviceInfoUtil(applicationContext, deviceRepository)
+                    val result = deviceInfoUtil.registerOrUpdateDevice()
+                    
+                    if (result != null) {
+                        Log.d(TAG, "✅ Device registration successful in scheduler")
+                    } else {
+                        Log.d(TAG, "📭 Device registration returned null in scheduler")
+                    }
+                } catch (e: java.net.SocketTimeoutException) {
+                    Log.w(TAG, "⏱️ Device registration timeout in scheduler")
+                } catch (e: java.net.ConnectException) {
+                    Log.w(TAG, "🔌 Device registration connection failed in scheduler")
+                } catch (e: java.io.IOException) {
+                    Log.w(TAG, "🌐 Device registration network error in scheduler: ${e.message}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "❌ Device registration failed in scheduler: ${e.message}")
+                }
+                
             } catch (e: Exception) {
-                Log.e(TAG, "Error in job execution: ${e.message}")
+                Log.e(TAG, "💥 Unexpected error in changelog job: ${e.message}")
                 e.printStackTrace()
-                jobFinished(params, true) // Reschedule on failure
+            } finally {
+                // Job finished
+                Log.d(TAG, "✅ Changelog scheduler job completed")
+                jobFinished(params, false)
             }
         }
         
-        // Return true to indicate that our job is still running asynchronously
-        return true
+        return true // Job is running asynchronously
     }
     
     override fun onStopJob(params: JobParameters?): Boolean {
         Log.d(TAG, "Job stopped")
-        // Return true to reschedule the job
-        return true
+        return false // Don't reschedule if stopped
     }
     
     /**
@@ -135,14 +168,14 @@ class ChangelogSchedulerJob : JobService() {
      */
     private fun reloadPlaylists() {
         try {
-            Log.d(TAG, "Reloading playlists")
+            Log.d(TAG, "🚫 DISABLED playlist reload to prevent continuous activity restarts")
             
-            // Create an intent to start the DigitalClockActivity
-            val intent = Intent(applicationContext, DigitalClockActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            // DISABLED: Create an intent to start the DigitalClockActivity
+            // DISABLED: val intent = Intent(applicationContext, DigitalClockActivity::class.java)
+            // DISABLED: intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             
-            // Start the activity
-            applicationContext.startActivity(intent)
+            // DISABLED: Start the activity
+            // DISABLED: applicationContext.startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Error reloading playlists: ${e.message}")
             e.printStackTrace()

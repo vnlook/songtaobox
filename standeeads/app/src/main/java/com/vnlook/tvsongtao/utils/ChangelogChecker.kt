@@ -54,9 +54,9 @@ class ChangelogChecker(private val context: Context) {
      * Start periodic changelog checks
      */
     fun startChecking() {
-        Log.d(TAG, "Starting changelog checker with interval: $CHECK_INTERVAL_MS ms")
-        stopChecking() // Stop any existing checker first
-        handler.post(checkRunnable)
+        Log.d(TAG, "🚫 ChangelogChecker DISABLED to prevent continuous loops")
+        // DISABLED: stopChecking() // Stop any existing checker first
+        // DISABLED: handler.post(checkRunnable)
     }
     
     /**
@@ -71,51 +71,86 @@ class ChangelogChecker(private val context: Context) {
      * Check for changes in the changelog and update device info
      */
     private fun checkForChanges() {
-        Log.d(TAG, "Checking for changelog changes and updating device info...")
+        Log.d(TAG, "Starting changelog check with network verification...")
         
-        coroutineScope.launch {
+        // Check network connectivity first
+        if (!NetworkUtil.isNetworkAvailable(context)) {
+            Log.d(TAG, "🚫 No network available, skipping changelog check")
+            return
+        }
+        
+        Log.d(TAG, "📡 Network available, proceeding with changelog check in background thread")
+        
+        // Run everything in background thread (IO dispatcher)
+        coroutineScope.launch(Dispatchers.IO) {
             try {
-                // Update device info regardless of changelog changes
+                // Update device info with timeout handling
                 try {
-                    Log.d(TAG, "Updating device info")
+                    Log.d(TAG, "📱 Updating device info with timeout protection...")
                     val deviceInfoResult = deviceInfoUtil.registerOrUpdateDevice()
-                    Log.d(TAG, "Device info update result: $deviceInfoResult")
+                    Log.d(TAG, "✅ Device info update result: $deviceInfoResult")
+                } catch (e: java.net.SocketTimeoutException) {
+                    Log.w(TAG, "⏱️ Device info update timeout - skipping this cycle")
+                    return@launch
+                } catch (e: java.net.ConnectException) {
+                    Log.w(TAG, "🔌 Device info update connection failed - skipping this cycle")
+                    return@launch
+                } catch (e: java.io.IOException) {
+                    Log.w(TAG, "🌐 Device info update network error - skipping this cycle: ${e.message}")
+                    return@launch
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error updating device info: ${e.message}")
-                    // Continue with changelog check even if device update fails
+                    Log.w(TAG, "❌ Device info update error - skipping this cycle: ${e.message}")
+                    return@launch
                 }
                 
-                // Check for changelog changes
-                val hasChanges = changelogUtil.checkChange()
-                
-                if (hasChanges) {
-                    Log.d(TAG, "Changes detected in changelog, reloading playlists")
-                    reloadPlaylists()
-                } else {
-                    Log.d(TAG, "No changes detected in changelog")
+                // Check for changelog changes with timeout handling
+                try {
+                    Log.d(TAG, "📝 Checking changelog with timeout protection...")
+                    val hasChanges = changelogUtil.checkChange()
+                    
+                    if (hasChanges) {
+                        Log.d(TAG, "🔄 Changes detected in changelog, refreshing data in background")
+                        // DON'T reload activity, just refresh data in background
+                        refreshDataInBackground()
+                    } else {
+                        Log.d(TAG, "📭 No changes detected in changelog")
+                    }
+                } catch (e: java.net.SocketTimeoutException) {
+                    Log.w(TAG, "⏱️ Changelog check timeout - skipping this cycle")
+                    return@launch
+                } catch (e: java.net.ConnectException) {
+                    Log.w(TAG, "🔌 Changelog check connection failed - skipping this cycle")
+                    return@launch
+                } catch (e: java.io.IOException) {
+                    Log.w(TAG, "🌐 Changelog check network error - skipping this cycle: ${e.message}")
+                    return@launch
+                } catch (e: Exception) {
+                    Log.w(TAG, "❌ Changelog check error - skipping this cycle: ${e.message}")
+                    return@launch
                 }
+                
             } catch (e: Exception) {
-                Log.e(TAG, "Error checking for changelog changes: ${e.message}")
-                e.printStackTrace()
+                Log.w(TAG, "💥 Unexpected error in changelog check - skipping this cycle: ${e.message}")
             }
         }
     }
     
     /**
-     * Reload playlists when changes are detected
+     * Refresh data in background without reloading activity
+     * This prevents screen flashing and UI interruption
      */
-    private fun reloadPlaylists() {
+    private fun refreshDataInBackground() {
         try {
-            Log.d(TAG, "Reloading playlists")
+            Log.d(TAG, "🔄 Refreshing playlists data in background (no activity reload)")
             
-            // Create an intent to start the DigitalClockActivity
-            val intent = Intent(context, DigitalClockActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            // Just refresh the VideoDownloadManager data in background
+            val videoDownloadManager = VideoDownloadManager(context)
+            videoDownloadManager.initializeVideoDownloadWithNetworkCheck(null)
             
-            // Start the activity
-            context.startActivity(intent)
+            Log.d(TAG, "✅ Background data refresh initiated")
+            
         } catch (e: Exception) {
-            Log.e(TAG, "Error reloading playlists: ${e.message}")
+            Log.e(TAG, "❌ Error refreshing data in background: ${e.message}")
             e.printStackTrace()
         }
     }

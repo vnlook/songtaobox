@@ -14,6 +14,7 @@ import com.vnlook.tvsongtao.utils.ChangelogChecker
 import com.vnlook.tvsongtao.utils.ChangelogSchedulerJob
 import com.vnlook.tvsongtao.utils.DeviceInfoUtil
 import com.vnlook.tvsongtao.utils.SSLConfig
+import com.vnlook.tvsongtao.utils.NetworkUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -70,21 +71,29 @@ class StandeeAdsApplication : Application() {
      */
     private fun registerDeviceInfo() {
         try {
-            Log.d(TAG, "Registering device info")
+            Log.d(TAG, "Checking device registration requirements")
+            
+            // Check network connectivity first
+            if (!NetworkUtil.isNetworkAvailable(this)) {
+                Log.d(TAG, "🚫 No network available, skipping device registration")
+                return
+            }
+            
+            Log.d(TAG, "📡 Network available, proceeding with device registration")
             val deviceRepository: DeviceRepository = DeviceRepositoryImpl(this)
             val deviceInfoUtil = DeviceInfoUtil(this, deviceRepository)
             
             coroutineScope.launch {
                 try {
                     val result = deviceInfoUtil.registerOrUpdateDevice()
-                    Log.d(TAG, "Device registration result: $result")
+                    Log.d(TAG, "✅ Device registration result: $result")
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error registering device: ${e.message}")
+                    Log.e(TAG, "💥 Error registering device: ${e.message}")
                     e.printStackTrace()
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error setting up device registration: ${e.message}")
+            Log.e(TAG, "💥 Error setting up device registration: ${e.message}")
             e.printStackTrace()
         }
     }
@@ -95,21 +104,17 @@ class StandeeAdsApplication : Application() {
      */
     private fun scheduleChangelogJob() {
         try {
-            // Try to schedule the JobScheduler first (for production)
+            // Schedule the JobScheduler for every 15 minutes
             try {
                 ChangelogSchedulerJob.schedule(this)
-                Log.d(TAG, "Changelog scheduler job scheduled")
+                Log.d(TAG, "✅ Changelog scheduler job scheduled (every 15 minutes)")
             } catch (e: Exception) {
                 Log.e(TAG, "Error scheduling changelog job: ${e.message}")
                 e.printStackTrace()
             }
             
-            // Also start the Handler-based checker for testing with short intervals
-            val changelogChecker = ChangelogChecker.getInstance(this)
-            changelogChecker.startChecking()
-            Log.d(TAG, "Changelog checker started for testing")
         } catch (e: Exception) {
-            Log.e(TAG, "Error setting up changelog checks: ${e.message}")
+            Log.e(TAG, "Error in scheduleChangelogJob: ${e.message}")
             e.printStackTrace()
         }
     }
