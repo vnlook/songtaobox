@@ -117,28 +117,41 @@ class VideoDownloadManager(private val context: Context) {
     private suspend fun initializeOnlineMode() {
         Log.d(TAG, "Initializing in online mode - downloading new playlists")
         
-        // Get new playlists from API
+        // Get new playlists from API (already filtered by device)
         val newPlaylists = playlistRepository.getPlaylists()
-        Log.d(TAG, "Retrieved ${newPlaylists.size} playlists from API")
+        Log.d(TAG, "Retrieved ${newPlaylists.size} playlists for this device from API")
         
-        // Get new videos from API
+        // Get videos ONLY for this device's playlists
         val newVideos: List<Video>
-        val apiResponse = VNLApiClient.getPlaylists()
-        
-        if (!apiResponse.isNullOrEmpty()) {
-            val (_, videos) = VNLApiResponseParser.parseApiResponse(apiResponse)
-            newVideos = videos
-            Log.d(TAG, "Retrieved ${newVideos.size} videos from API")
+        if (newPlaylists.isNotEmpty()) {
+            // Extract video IDs from device's playlists
+            val deviceVideoIds = newPlaylists.flatMap { it.videoIds }.toSet()
+            Log.d(TAG, "Device has ${deviceVideoIds.size} unique video IDs in playlists")
+            
+            // Get all videos from API and filter by device playlist video IDs
+            val apiResponse = VNLApiClient.getPlaylists()
+            if (!apiResponse.isNullOrEmpty()) {
+                val (_, allVideos) = VNLApiResponseParser.parseApiResponse(apiResponse)
+                newVideos = allVideos.filter { video -> deviceVideoIds.contains(video.id) }
+                Log.d(TAG, "Filtered to ${newVideos.size} videos for this device (from ${allVideos.size} total)")
+            } else {
+                Log.w(TAG, "API call failed, falling back to offline mode")
+                initializeOfflineMode()
+                return
+            }
         } else {
-            Log.w(TAG, "API call failed, falling back to offline mode")
-            initializeOfflineMode()
-            return
+            Log.w(TAG, "No playlists found for this device, using empty video list")
+            newVideos = emptyList()
         }
         
-        // Get old playlists for comparison
+        // Get old playlists and videos for comparison
         val oldPlaylists = dataManager.getPlaylists()
+        val oldVideos = dataManager.getVideos()
         
-        // Merge videos (this will automatically delete invalid video files)
+        // Clean up ALL videos not in new device playlist before merging
+        cleanupAllInvalidVideos(oldVideos, newVideos)
+        
+        // Merge videos (this will preserve download status for valid videos)
         val mergedVideos = dataManager.mergeVideos(newVideos)
         dataManager.saveVideos(mergedVideos)
         
@@ -146,7 +159,6 @@ class VideoDownloadManager(private val context: Context) {
         if (downloadHelper.checkIfPlaylistsNeedUpdate(newPlaylists, oldPlaylists)) {
             Log.d(TAG, "Playlists have changed, updating cache")
             dataManager.savePlaylists(newPlaylists)
-            cleanupInvalidVideoFiles(newVideos)
         } else {
             Log.d(TAG, "Playlists unchanged, keeping existing data")
         }
@@ -215,6 +227,65 @@ class VideoDownloadManager(private val context: Context) {
     }
     
     /**
+     * Clean up ALL videos not belonging to this device's playlists
+     */
+    private fun cleanupAllInvalidVideos(oldVideos: List<Video>, newDeviceVideos: List<Video>) {
+        try {
+            val newDeviceVideoUrls = newDeviceVideos.map { it.url }.toSet()
+            Log.d(TAG, "Cleaning up videos not in device playlists. Valid URLs: ${newDeviceVideoUrls.size}")
+            
+            // Delete video files from storage that are not in new device video list
+            val moviesDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+            var deletedCount = 0
+            
+            if (moviesDir != null && moviesDir.exists()) {
+                val files = moviesDir.listFiles()
+                files?.forEach { file ->
+                    if (file.isFile) {
+                        // Check if this file corresponds to any valid device video
+                        val isValidForDevice = newDeviceVideoUrls.any { url ->
+                            downloadHelper.extractFilenameFromUrl(url) == file.name
+                        }
+                        
+                        if (!isValidForDevice) {
+                            val deleted = file.delete()
+                            if (deleted) {
+                                deletedCount++
+                                Log.d(TAG, "Deleted video file not for this device: ${file.absolutePath}")
+                            } else {
+                                Log.w(TAG, "Failed to delete invalid video file: ${file.absolutePath}")
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Also clean up old video references that are not for this device
+            val invalidOldVideos = oldVideos.filter { oldVideo ->
+                !newDeviceVideoUrls.contains(oldVideo.url) && 
+                oldVideo.isDownloaded && 
+                !oldVideo.localPath.isNullOrEmpty()
+            }
+            
+            invalidOldVideos.forEach { invalidVideo ->
+                val file = File(invalidVideo.localPath!!)
+                if (file.exists()) {
+                    val deleted = file.delete()
+                    if (deleted) {
+                        deletedCount++
+                        Log.d(TAG, "Deleted invalid cached video file: ${invalidVideo.localPath}")
+                    }
+                }
+            }
+            
+            Log.d(TAG, "Cleanup completed. Deleted $deletedCount invalid video files")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up invalid video files: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+    
+    /**
      * Clean up video files that are no longer valid according to current playlists
      */
     private fun cleanupInvalidVideoFiles(validVideos: List<Video>) {
@@ -269,10 +340,18 @@ class VideoDownloadManager(private val context: Context) {
                 val apiResponse = VNLApiClient.getPlaylists()
                 
                 if (!apiResponse.isNullOrEmpty()) {
-                    // Parse videos from API response
-                    val (_, videos) = VNLApiResponseParser.parseApiResponse(apiResponse)
-                    apiVideos = videos
-                    Log.d(TAG, "Retrieved ${apiVideos.size} videos directly from API")
+                    // Parse videos from API response and filter by device playlists
+                    val (_, allVideos) = VNLApiResponseParser.parseApiResponse(apiResponse)
+                    
+                    // Filter videos by device's playlist video IDs
+                    if (playlists.isNotEmpty()) {
+                        val deviceVideoIds = playlists.flatMap { it.videoIds }.toSet()
+                        apiVideos = allVideos.filter { video -> deviceVideoIds.contains(video.id) }
+                        Log.d(TAG, "Filtered to ${apiVideos.size} videos for this device (from ${allVideos.size} total)")
+                    } else {
+                        Log.w(TAG, "No playlists found for this device, using empty video list")
+                        apiVideos = emptyList()
+                    }
                 } else {
                     Log.w(TAG, "API call failed or returned empty response, using empty video list")
                     apiVideos = emptyList()
@@ -280,6 +359,10 @@ class VideoDownloadManager(private val context: Context) {
                 
                 // Get saved data from DataManager
                 val savedPlaylists = dataManager.getPlaylists()
+                val savedVideos = dataManager.getVideos()
+                
+                // Clean up ALL videos not in new device playlist before merging
+                cleanupAllInvalidVideos(savedVideos, apiVideos)
                 
                 // Merge and save videos
                 val mergedVideos = dataManager.mergeVideos(apiVideos)
