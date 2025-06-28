@@ -1,8 +1,12 @@
 package com.vnlook.tvsongtao.usecase
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -40,12 +44,40 @@ class PermissionUseCase(private val activity: AppCompatActivity) {
             }
             
             // For all Android versions, check storage permissions
+            val storagePermissionsNeeded = mutableListOf<String>()
+            
             if (ContextCompat.checkSelfPermission(activity, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG, "Requesting READ_EXTERNAL_STORAGE permission")
-                ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), PERMISSION_REQUEST_CODE)
-                allPermissionsGranted = false
+                Log.d(TAG, "READ_EXTERNAL_STORAGE permission needed")
+                storagePermissionsNeeded.add(Manifest.permission.READ_EXTERNAL_STORAGE)
             } else {
                 Log.d(TAG, "READ_EXTERNAL_STORAGE permission already granted")
+            }
+            
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+                // For Android 12 and below, check WRITE_EXTERNAL_STORAGE
+                if (ContextCompat.checkSelfPermission(activity, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    Log.d(TAG, "WRITE_EXTERNAL_STORAGE permission needed")
+                    storagePermissionsNeeded.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                } else {
+                    Log.d(TAG, "WRITE_EXTERNAL_STORAGE permission already granted")
+                }
+            }
+            
+            if (storagePermissionsNeeded.isNotEmpty()) {
+                Log.d(TAG, "Requesting storage permissions: ${storagePermissionsNeeded.joinToString()}")
+                ActivityCompat.requestPermissions(activity, storagePermissionsNeeded.toTypedArray(), PERMISSION_REQUEST_CODE)
+                allPermissionsGranted = false
+            }
+            
+            // For Android 11+, check MANAGE_EXTERNAL_STORAGE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (!Environment.isExternalStorageManager()) {
+                    Log.d(TAG, "MANAGE_EXTERNAL_STORAGE permission not granted - opening settings")
+                    requestManageExternalStoragePermission()
+                    allPermissionsGranted = false
+                } else {
+                    Log.d(TAG, "MANAGE_EXTERNAL_STORAGE permission already granted")
+                }
             }
             
             // If we reach here and allPermissionsGranted is still true, we have all permissions
@@ -62,6 +94,30 @@ class PermissionUseCase(private val activity: AppCompatActivity) {
     }
     
     /**
+     * Request MANAGE_EXTERNAL_STORAGE permission for Android 11+
+     */
+    private fun requestManageExternalStoragePermission() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:${activity.packageName}")
+                }
+                activity.startActivity(intent)
+                Log.d(TAG, "Opened MANAGE_EXTERNAL_STORAGE settings")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening MANAGE_EXTERNAL_STORAGE settings: ${e.message}")
+            // Fallback to general settings
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                activity.startActivity(intent)
+            } catch (e2: Exception) {
+                Log.e(TAG, "Error opening general storage settings: ${e2.message}")
+            }
+        }
+    }
+    
+    /**
      * Handle permission result
      * @return true if permission was granted, false otherwise
      */
@@ -73,5 +129,48 @@ class PermissionUseCase(private val activity: AppCompatActivity) {
         }
         Log.d(TAG, "Unknown request code: $requestCode")
         return false
+    }
+    
+    /**
+     * Check if all required permissions are granted
+     * @return true if all permissions are granted, false otherwise
+     */
+    fun areAllPermissionsGranted(): Boolean {
+        try {
+            var allGranted = true
+            
+            // Check basic storage permissions
+            if (ContextCompat.checkSelfPermission(activity, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "❌ READ_EXTERNAL_STORAGE not granted")
+                allGranted = false
+            } else {
+                Log.d(TAG, "✅ READ_EXTERNAL_STORAGE granted")
+            }
+            
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+                if (ContextCompat.checkSelfPermission(activity, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    Log.d(TAG, "❌ WRITE_EXTERNAL_STORAGE not granted")
+                    allGranted = false
+                } else {
+                    Log.d(TAG, "✅ WRITE_EXTERNAL_STORAGE granted")
+                }
+            }
+            
+            // Check MANAGE_EXTERNAL_STORAGE for Android 11+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (!Environment.isExternalStorageManager()) {
+                    Log.d(TAG, "❌ MANAGE_EXTERNAL_STORAGE not granted")
+                    allGranted = false
+                } else {
+                    Log.d(TAG, "✅ MANAGE_EXTERNAL_STORAGE granted")
+                }
+            }
+            
+            Log.d(TAG, "Overall permission status: ${if (allGranted) "ALL GRANTED ✅" else "SOME MISSING ❌"}")
+            return allGranted
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking permissions: ${e.message}")
+            return false
+        }
     }
 }

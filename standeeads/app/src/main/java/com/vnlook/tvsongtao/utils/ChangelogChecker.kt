@@ -106,15 +106,15 @@ class ChangelogChecker(private val context: Context) {
                 // Check for changelog changes with timeout handling
                 try {
                     Log.d(TAG, "📝 Checking changelog with timeout protection...")
-                    val hasChanges = changelogUtil.checkChange()
-                    
-                    if (hasChanges) {
+                val hasChanges = changelogUtil.checkChange()
+                
+                if (hasChanges) {
                         Log.d(TAG, "🔄 Changes detected in changelog, refreshing data in background")
                         // DON'T reload activity, just refresh data in background
                         refreshDataInBackground()
-                    } else {
+                } else {
                         Log.d(TAG, "📭 No changes detected in changelog")
-                    }
+                }
                 } catch (e: java.net.SocketTimeoutException) {
                     Log.w(TAG, "⏱️ Changelog check timeout - skipping this cycle")
                     return@launch

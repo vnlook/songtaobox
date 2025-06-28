@@ -117,9 +117,9 @@ class VideoDownloadHelper(private val context: Context) {
     }
     
     /**
-     * Checks if a video file exists locally
+     * Checks if a video file exists locally using URL
      * 
-     * @param videoId ID of the video to check
+     * @param videoUrl URL of the video to check
      * @return True if the video file exists, false otherwise
      */
     fun isVideoFileExists(videoUrl: String): Boolean {
@@ -133,16 +133,32 @@ class VideoDownloadHelper(private val context: Context) {
     }
     
     /**
-     * Gets the download path for a video
+     * Checks if a video file exists locally using video ID (deprecated)
      * 
-     * @param videoId ID of the video
+     * @param videoId ID of the video to check
+     * @return True if the video file exists, false otherwise
+     */
+    @Deprecated("Use isVideoFileExists(videoUrl) instead for consistency")
+    fun isVideoFileExistsById(videoId: String): Boolean {
+        try {
+            val file = File(getVideoDownloadPathById(videoId))
+            return file.exists() && file.length() > 0
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking if video file exists: ${e.message}")
+            return false
+        }
+    }
+    
+    /**
+     * Gets the download path for a video using filename from URL
+     * 
+     * @param videoUrl URL of the video to extract filename
      * @return Absolute path to the video file
      */
     fun getVideoDownloadPath(videoUrl: String): String {
         try {
             val directory = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
-//            val videoFileName = "video_${videoId}.mp4"
-            val videoFileName = extractFilenameFromUrl(videoUrl)
+            val videoFileName = VideoDownloadManager.extractFilenameFromUrl(videoUrl)
             // Ensure directory exists
             if (directory != null && !directory.exists()) {
                 directory.mkdirs()
@@ -152,11 +168,34 @@ class VideoDownloadHelper(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Error getting video download path: ${e.message}")
             // Return a fallback path in case of error
-            return context.filesDir.absolutePath + "/video_${videoUrl}.mp4"
+            val fallbackFilename = VideoDownloadManager.extractFilenameFromUrl(videoUrl)
+            return context.filesDir.absolutePath + "/$fallbackFilename"
+        }
+    }
+    
+    /**
+     * Gets the download path for a video using video ID (deprecated - use URL version)
+     * 
+     * @param videoId ID of the video
+     * @return Absolute path to the video file
+     */
+    @Deprecated("Use getVideoDownloadPath(videoUrl) instead for consistency")
+    fun getVideoDownloadPathById(videoId: String): String {
+        try {
+            val directory = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+            val videoFileName = "video_${videoId}.mp4" // Fallback to old pattern for compatibility
+            // Ensure directory exists
+            if (directory != null && !directory.exists()) {
+                directory.mkdirs()
+            }
+            
+            return File(directory, videoFileName).absolutePath
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting video download path: ${e.message}")
+            // Return a fallback path in case of error
+            return context.filesDir.absolutePath + "/video_${videoId}.mp4"
         }
     }
 
-    fun extractFilenameFromUrl(url: String): String {
-        return url.substringAfterLast("/")
-    }
+
 }

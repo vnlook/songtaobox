@@ -45,6 +45,36 @@ class VideoDownloadManager(private val context: Context) {
     
     companion object {
         private const val PROGRESS_UPDATE_INTERVAL = 1000L // 1 second
+        
+        /**
+         * Extract filename from URL
+         * Example: https://ledgiaodich.vienthongtayninh.vn:3030/assets/55d0667c-9141-47ed-8e9d-e3079b131e86.mp4
+         * Returns: 55d0667c-9141-47ed-8e9d-e3079b131e86.mp4
+         */
+        fun extractFilenameFromUrl(url: String): String {
+            return try {
+                val urlObj = URL(url)
+                val path = urlObj.path
+                val filename = path.substringAfterLast('/')
+                
+                // Ensure it has .mp4 extension
+                if (filename.isNotEmpty() && filename.contains('.')) {
+                    filename
+                } else {
+                    // Fallback: use last part of path + .mp4
+                    "${filename}.mp4"
+                }
+            } catch (e: Exception) {
+                Log.e("VideoDownloadManager", "Error extracting filename from URL: ${e.message}")
+                // Fallback: generate basic filename from URL path
+                val lastSegment = url.substringAfterLast('/')
+                if (lastSegment.contains('.')) {
+                    lastSegment
+                } else {
+                    "video_${url.hashCode().toString().replace("-", "")}.mp4"
+                }
+            }
+        }
     }
     
     // Download progress tracking
@@ -62,7 +92,7 @@ class VideoDownloadManager(private val context: Context) {
     }
     
     /**
-     * SIMPLE initialization - only works when online
+     * Initialize video download with network check - properly handles API status codes
      */
     fun initializeVideoDownloadWithNetworkCheck(listener: VideoDownloadManagerListener?) {
         if (isInitializing) {
@@ -73,31 +103,33 @@ class VideoDownloadManager(private val context: Context) {
         this.downloadListener = listener
         isInitializing = true
         
-        Log.d(TAG, "🔄 Starting SIMPLE video download initialization...")
+        Log.d(TAG, "🔄 Starting video download initialization with API status check...")
         
         // Check network first
         if (!NetworkUtil.isNetworkAvailable(context)) {
-            Log.d(TAG, "🚫 NO NETWORK - Cannot call API, finishing initialization")
+            Log.d(TAG, "🚫 NO NETWORK - Using cached playlists")
             isInitializing = false
-            // Call processOfflineMode to use cached data
             processOfflineMode()
             return
         }
         
-        Log.d(TAG, "📡 NETWORK AVAILABLE - Making single API call...")
+        Log.d(TAG, "📡 NETWORK AVAILABLE - Making API call...")
         
         coroutineScope.launch {
             try {
-                Log.d(TAG, "📞 SINGLE API CALL - Making ONE API call to get both playlists and videos")
+                Log.d(TAG, "📞 Making API call to get playlists and videos...")
                 
-                // Make ONE API call to get raw response
+                // Make API call - VNLApiClient already checks for HTTP 200 status
                 val apiResponse = VNLApiClient.getPlaylists()
                 
+                // VNLApiClient returns null if status != 200 or on error
                 if (apiResponse.isNullOrEmpty()) {
-                    Log.w(TAG, "🚫 API FAILED - No response received, using offline mode")
+                    Log.w(TAG, "🚫 API FAILED (status != 200 or error) - Using cached playlists")
                     processOfflineMode()
                     return@launch
                 }
+                
+                Log.d(TAG, "✅ API SUCCESS (status 200) - Processing response...")
                 
                 // Parse playlists and videos from API response
                 val deviceRepository = DeviceRepositoryImpl(context)
@@ -119,24 +151,23 @@ class VideoDownloadManager(private val context: Context) {
                 
                 Log.d(TAG, "✅ API SUCCESS: ${devicePlaylists.size} playlists, ${deviceVideos.size} videos for device ${deviceInfo.deviceId}")
                 
+                // IMPORTANT: Only update cache when API returns status 200 (success)
                 if (devicePlaylists.isNotEmpty()) {
-                    // Save to cache
+                    Log.d(TAG, "💾 API SUCCESS - Updating cache with new playlists")
                     val dataManager = DataManager(context)
                     dataManager.savePlaylists(devicePlaylists)
-                    Log.d(TAG, "💾 Cached ${devicePlaylists.size} playlists")
+                    Log.d(TAG, "✅ Cache updated with ${devicePlaylists.size} playlists")
                     
-                    // Download videos
+                    // Download videos for new playlists
                     downloadVideos(deviceVideos)
                 } else {
-                    Log.d(TAG, "📭 No playlists for this device from API")
-                    Log.d(TAG, "🔄 API returned no playlists - using cached playlists instead")
-                    // IMPORTANT: Don't clear cache, use existing cached playlists
+                    Log.d(TAG, "📭 API SUCCESS but no playlists for this device - using cached playlists")
+                    // Don't clear cache, use existing cached playlists
                     processOfflineMode()
                 }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "🚫 API FAILED - Exception: ${e.message}")
-                Log.d(TAG, "🚫 API FAILED - Using offline mode")
+                Log.e(TAG, "🚫 API EXCEPTION: ${e.message} - Using cached playlists")
                 e.printStackTrace()
                 processOfflineMode()
             } finally {
@@ -250,7 +281,7 @@ class VideoDownloadManager(private val context: Context) {
                 handler.post(progressMonitorRunnable)
             }
             
-            // Download each video
+            // Download each video sequentially
             videos.forEach { video ->
                 try {
                     downloadVideo(video)
@@ -275,12 +306,135 @@ class VideoDownloadManager(private val context: Context) {
     }
     
     /**
-     * Download a single video
+     * Download a single video with actual implementation
      */
-    private fun downloadVideo(video: Video) {
-        // Implementation for downloading a single video
-        Log.d(TAG, "Downloading video: ${video.id}")
-        // Add actual download logic here
+    private suspend fun downloadVideo(video: Video) {
+        withContext(Dispatchers.IO) {
+            try {
+                if (video.url.isNullOrEmpty()) {
+                    Log.w(TAG, "Video ${video.id} has no URL, skipping")
+                    return@withContext
+                }
+                
+                // Check network connectivity before download
+                if (!NetworkUtil.isNetworkAvailable(context)) {
+                    Log.w(TAG, "No network available for downloading video ${video.id}")
+                    return@withContext
+                }
+                
+                Log.d(TAG, "🎬 Downloading video: ${video.id} from ${video.url}")
+                Log.d(TAG, "📱 Network type: ${if (NetworkUtil.isWiFiConnected(context)) "WiFi" else "Mobile"}")
+                
+                // Debug URL details
+                val url = URL(video.url)
+                Log.d(TAG, "🌐 URL Protocol: ${url.protocol}")
+                Log.d(TAG, "🌐 URL Host: ${url.host}")
+                Log.d(TAG, "🌐 URL Port: ${url.port}")
+                Log.d(TAG, "🌐 URL Path: ${url.path}")
+                
+                // Extract filename from URL
+                val fileName = extractFilenameFromUrl(video.url)
+                
+                // Get movies directory
+                val moviesDir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "")
+                if (!moviesDir.exists()) {
+                    moviesDir.mkdirs()
+                }
+                Log.d(TAG, "📁 Movies directory: ${moviesDir.absolutePath}")
+                
+                val localFile = File(moviesDir, fileName)
+                
+                // Skip if file already exists but update download status
+                if (localFile.exists()) {
+                    Log.d(TAG, "Video ${video.id} already exists: ${localFile.absolutePath}")
+                    
+                    // Update download status for existing file
+                    val dataManager = DataManager(context)
+                    dataManager.updateVideoDownloadStatus(video.url, true, localFile.absolutePath)
+                    Log.d(TAG, "📝 Updated status for existing video ${video.id}")
+                    
+                    return@withContext
+                }
+                
+                // Download the video file with proper headers
+                val connection = url.openConnection() as HttpURLConnection
+                
+                // Configure connection for real devices
+                connection.connectTimeout = 30000
+                connection.readTimeout = 60000 // Increased for large video files
+                connection.requestMethod = "GET"
+                
+                // Add essential headers for real device compatibility
+                connection.setRequestProperty("User-Agent", "StandeeAds/1.0 (Android)")
+                connection.setRequestProperty("Accept", "*/*")
+                connection.setRequestProperty("Connection", "keep-alive")
+                
+                Log.d(TAG, "🌐 Connecting to ${video.url} for video ${video.id}")
+                
+                val responseCode = connection.responseCode
+                Log.d(TAG, "📡 HTTP Response: $responseCode for video ${video.id}")
+                
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val contentLength = connection.contentLength
+                    Log.d(TAG, "📦 Content length: $contentLength bytes for video ${video.id}")
+                    
+                    connection.inputStream.use { input ->
+                        FileOutputStream(localFile).use { output ->
+                            val buffer = ByteArray(8192)
+                            var bytesRead: Int
+                            var totalBytes = 0
+                            
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                                totalBytes += bytesRead
+                            }
+                            
+                            Log.d(TAG, "📥 Downloaded $totalBytes bytes for video ${video.id}")
+                        }
+                    }
+                    
+                    // Verify file was created successfully
+                    if (localFile.exists() && localFile.length() > 0) {
+                        Log.d(TAG, "✅ Successfully downloaded video ${video.id} to ${localFile.absolutePath} (${localFile.length()} bytes)")
+                        
+                        // Update download status in cache
+                        val dataManager = DataManager(context)
+                        dataManager.updateVideoDownloadStatus(video.url, true, localFile.absolutePath)
+                        Log.d(TAG, "📝 Updated download status for video ${video.id}")
+                    } else {
+                        Log.e(TAG, "❌ Downloaded file is empty or doesn't exist for video ${video.id}")
+                    }
+                    
+                } else {
+                    Log.e(TAG, "❌ Failed to download video ${video.id}: HTTP $responseCode")
+                    Log.e(TAG, "   Response message: ${connection.responseMessage}")
+                    
+                    // Try to read error response
+                    try {
+                        val errorResponse = connection.errorStream?.bufferedReader()?.readText()
+                        if (!errorResponse.isNullOrEmpty()) {
+                            Log.e(TAG, "   Error response: $errorResponse")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "   Could not read error response: ${e.message}")
+                    }
+                }
+                
+                connection.disconnect()
+                
+            } catch (e: java.net.SocketTimeoutException) {
+                Log.e(TAG, "⏰ Timeout downloading video ${video.id}: ${e.message}")
+            } catch (e: java.net.UnknownHostException) {
+                Log.e(TAG, "🌐 Network error downloading video ${video.id}: ${e.message}")
+            } catch (e: javax.net.ssl.SSLException) {
+                Log.e(TAG, "🔒 SSL error downloading video ${video.id}: ${e.message}")
+            } catch (e: java.io.IOException) {
+                Log.e(TAG, "💾 I/O error downloading video ${video.id}: ${e.message}")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Unexpected error downloading video ${video.id}: ${e.message}")
+                e.printStackTrace()
+            }
+        }
     }
     
     /**
@@ -304,11 +458,46 @@ class VideoDownloadManager(private val context: Context) {
     }
     
     /**
+     * Test connectivity to a specific domain
+     */
+    private suspend fun testConnectivity(videoUrl: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL(videoUrl)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 10000
+                connection.requestMethod = "HEAD"
+                connection.setRequestProperty("User-Agent", "StandeeAds/1.0 (Android)")
+                
+                val responseCode = connection.responseCode
+                connection.disconnect()
+                
+                Log.d(TAG, "🔍 Connectivity test to ${url.host}: HTTP $responseCode")
+                return@withContext responseCode in 200..299
+            } catch (e: Exception) {
+                Log.e(TAG, "🚫 Connectivity test failed: ${e.message}")
+                return@withContext false
+            }
+        }
+    }
+
+    /**
      * Debug movies directory
      */
     fun debugMoviesDirectory() {
         Log.d(TAG, "🎬 Movies directory debug info")
-        // Add debug logic here
+        val moviesDir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "")
+        Log.d(TAG, "   Directory exists: ${moviesDir.exists()}")
+        Log.d(TAG, "   Directory path: ${moviesDir.absolutePath}")
+        Log.d(TAG, "   Directory writable: ${moviesDir.canWrite()}")
+        
+        if (moviesDir.exists()) {
+            val files = moviesDir.listFiles()
+            Log.d(TAG, "   Files in directory: ${files?.size ?: 0}")
+            files?.forEach { file ->
+                Log.d(TAG, "     - ${file.name} (${file.length()} bytes)")
+            }
+        }
     }
     
     /**

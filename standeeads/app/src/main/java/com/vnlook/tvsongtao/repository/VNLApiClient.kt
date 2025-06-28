@@ -47,9 +47,9 @@ object VNLApiClient {
             connection.setRequestProperty("Host", "ledgiaodich.vienthongtayninh.vn:3030")
             connection.setRequestProperty("Connection", "keep-alive")
             
-            // Set timeouts
-            connection.connectTimeout = 15000
-            connection.readTimeout = 15000
+            // Set timeouts (increased for better reliability)
+            connection.connectTimeout = 30000 // 30 seconds
+            connection.readTimeout = 60000    // 60 seconds
             
             // Get response
             val responseCode = connection.responseCode

@@ -73,9 +73,29 @@ class VideoPlayer(
 
     private fun getVideosForPlaylist(playlist: Playlist): List<Video> {
         val allVideos = dataManager.getVideos()
-        return allVideos.filter { video ->
-            video.isDownloaded && playlist.videoIds.contains(video.id)
+        Log.d(TAG, "🎬 Total videos in cache: ${allVideos.size}")
+        
+        val playlistVideos = allVideos.filter { video ->
+            playlist.videoIds.contains(video.id)
         }
+        Log.d(TAG, "📋 Videos for playlist ${playlist.id}: ${playlistVideos.size}")
+        
+        val downloadedVideos = playlistVideos.filter { video ->
+            val isDownloaded = video.isDownloaded
+            Log.d(TAG, "Video ${video.id}: isDownloaded=$isDownloaded, localPath=${video.localPath}")
+            
+            // Also check if file actually exists
+            if (isDownloaded && !video.localPath.isNullOrEmpty()) {
+                val file = File(video.localPath!!)
+                val fileExists = file.exists()
+                Log.d(TAG, "Video ${video.id}: file exists=$fileExists, path=${video.localPath}")
+                return@filter fileExists
+            }
+            return@filter isDownloaded
+        }
+        
+        Log.d(TAG, "✅ Downloaded videos for playlist: ${downloadedVideos.size}")
+        return downloadedVideos
     }
 
     private fun playCurrentVideo() {
@@ -91,7 +111,15 @@ class VideoPlayer(
         }
 
         val video = videos[currentVideoIndex]
-        val videoPath = downloadHelper.getVideoDownloadPath(video.url)
+        
+        // Use localPath if available, otherwise use helper to get path from URL
+        val videoPath = if (!video.localPath.isNullOrEmpty()) {
+            video.localPath!!
+        } else {
+            downloadHelper.getVideoDownloadPath(video.url ?: "")
+        }
+        
+        Log.d(TAG, "🎬 Playing video ${video.id}, path: $videoPath")
         val file = File(videoPath)
 
         if (!file.exists()) {
@@ -124,8 +152,6 @@ class VideoPlayer(
     fun stop() {
         player.stop()
         isPlayingVideo = false
-        
-
         Log.d(TAG, "Video playback stopped")
     }
 
@@ -133,7 +159,6 @@ class VideoPlayer(
         player.release()
         Log.d(TAG, "ExoPlayer released")
     }
-
 
     companion object {
         private const val TAG = "VideoPlayer"

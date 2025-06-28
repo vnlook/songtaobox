@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!-- Base configuration for all domains -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+            <certificates src="user"/>
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Specific domain config -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">ledgiaodich.vienthongtayninh.vn</domain>
         <trust-anchors>

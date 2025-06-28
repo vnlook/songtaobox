@@ -47,6 +47,31 @@ class VideoUseCase(
     fun initializeManagers() {
         try {
             Log.d("VideoUseCase", "Initializing video managers")
+            
+            // Check if activity is null
+            if (activity == null) {
+                Log.e("VideoUseCase", "Activity is null, cannot initialize managers")
+                return
+            }
+            
+            // Check if videoView is null
+            if (videoView == null) {
+                Log.e("VideoUseCase", "VideoView is null, cannot initialize managers")
+                return
+            }
+            
+            // Check if uiUseCase is null
+            if (uiUseCase == null) {
+                Log.e("VideoUseCase", "UIUseCase is null, cannot initialize managers")
+                return
+            }
+            
+            // Check if dataUseCase is null
+            if (dataUseCase == null) {
+                Log.e("VideoUseCase", "DataUseCase is null, cannot initialize managers")
+                return
+            }
+            
             videoDownloadManager = VideoDownloadManager(activity)
             videoDownloadManager.setDownloadListener(this)
             
@@ -75,9 +100,16 @@ class VideoUseCase(
             
             // Start playing videos
             checkAndPlayCurrentPlaylist()
+            
+            Log.d("VideoUseCase", "✅ Video managers initialized successfully")
         } catch (e: Exception) {
             Log.e("VideoUseCase", "Error in initializeManagers: ${e.message}")
             e.printStackTrace()
+            try {
+                uiUseCase?.showStatus("Lỗi khởi tạo video manager: ${e.message}")
+            } catch (e2: Exception) {
+                Log.e("VideoUseCase", "Error showing error status: ${e2.message}")
+            }
         }
     }
     
@@ -163,24 +195,25 @@ class VideoUseCase(
                     val playlists = dataUseCase.getPlaylists()
 
                     if (playlists.isEmpty()) {
-                        Log.w("VideoUseCase", "No playlists found")
+                        Log.w("VideoUseCase", "No playlists found - returning to digital clock")
                         withContext(Dispatchers.Main) {
                             try {
-                                // REMOVED: Don't start new activity as it causes destroy/recreate loop
-                                // val intent = Intent(activity, DigitalClockActivity::class.java).apply {
-                                //     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                // }
-                                // activity.startActivity(intent)
-                                Log.d("VideoUseCase", "No playlists found - staying in current activity to avoid destroy/recreate loop")
+                                // Return to DigitalClockActivity when no playlists available
+                                Log.d("VideoUseCase", "No playlists found - returning to DigitalClockActivity")
                                 
-                                // Just show status instead of changing activity
+                                val intent = Intent(activity, DigitalClockActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                }
+                                activity.startActivity(intent)
+                                activity.finish()
+                            } catch (e: Exception) {
+                                Log.e("VideoUseCase", "Error returning to DigitalClockActivity: ${e.message}")
+                                // Fallback: just show status
                                 try {
                                     uiUseCase.showStatus("Không có playlist nào để phát")
-                                } catch (e: Exception) {
-                                    Log.e("VideoUseCase", "Error showing status: ${e.message}")
+                                } catch (e2: Exception) {
+                                    Log.e("VideoUseCase", "Error showing status: ${e2.message}")
                                 }
-                            } catch (e: Exception) {
-                                Log.e("VideoUseCase", "Error handling no playlists case: ${e.message}")
                             }
                         }
                         return@launch
@@ -208,9 +241,9 @@ class VideoUseCase(
                         } else {
                             // No local videos available, show waiting message
                             Log.d("VideoUseCase", "🚫 No local videos available on disk, waiting for downloads")
-                            withContext(Dispatchers.Main) {
+                        withContext(Dispatchers.Main) {
                                 try {
-                                    uiUseCase.showStatus("Đang chờ tải xong video...")
+                            uiUseCase.showStatus("Đang chờ tải xong video...")
                                 } catch (e: Exception) {
                                     Log.e("VideoUseCase", "Error showing status: ${e.message}")
                                 }
@@ -223,19 +256,29 @@ class VideoUseCase(
                     Log.d("VideoUseCase", "Current playlist: ${currentPlaylist?.id ?: "none"}")
                     
                     if (currentPlaylist == null) {
-                        Log.d("VideoUseCase", "No playlist scheduled for current time")
+                        Log.d("VideoUseCase", "No playlist scheduled for current time - returning to digital clock")
                         withContext(Dispatchers.Main) {
                             try {
                                 if (::videoPlayer.isInitialized) {
                                     videoPlayer.stop()
                                 }
+                                
+                                // Return to DigitalClockActivity when no playlist is scheduled
+                                Log.d("VideoUseCase", "No playlist scheduled - returning to DigitalClockActivity")
+                                
+                                val intent = Intent(activity, DigitalClockActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                }
+                                activity.startActivity(intent)
+                                activity.finish()
+                            } catch (e: Exception) {
+                                Log.e("VideoUseCase", "Error returning to DigitalClockActivity: ${e.message}")
+                                // Fallback: just show status
                                 try {
                                     uiUseCase.showStatus("Không có playlist nào cần phát vào lúc ${LocalTime.now()}")
-                                } catch (e: Exception) {
-                                    Log.e("VideoUseCase", "Error showing status: ${e.message}")
+                                } catch (e2: Exception) {
+                                    Log.e("VideoUseCase", "Error showing status: ${e2.message}")
                                 }
-                            } catch (e: Exception) {
-                                Log.e("VideoUseCase", "Error handling no playlist case: ${e.message}")
                             }
                         }
                         return@launch
@@ -245,9 +288,31 @@ class VideoUseCase(
                     
                     // Get videos for the current playlist
                     val videos = dataUseCase.getVideos()
+                    Log.d("VideoUseCase", "💾 Total videos in cache: ${videos.size}")
+                    
+                    // Debug each video info with expected filename
+                    videos.forEachIndexed { index, video ->
+                        Log.d("VideoUseCase", "Video $index: ${video.name}, ID=${video.id}, URL=${video.url}")
+                        if (!video.url.isNullOrEmpty()) {
+                            val expectedFilename = VideoDownloadManager.extractFilenameFromUrl(video.url)
+                            Log.d("VideoUseCase", "   Expected filename: $expectedFilename")
+                        }
+                    }
+                    
+                    // Debug: Show video IDs in cache
+                    if (videos.isNotEmpty()) {
+                        val videoIds = videos.take(5).map { it.id }
+                        Log.d("VideoUseCase", "📹 First 5 video IDs in cache: $videoIds")
+                    }
+                    
+                    // Debug: Show playlist video IDs
+                    Log.d("VideoUseCase", "🎬 Playlist ${currentPlaylist.id} expects video IDs: ${currentPlaylist.videoIds}")
+                    
                     val playlistVideos = videos.filter { video -> 
                         currentPlaylist.videoIds.contains(video.id) 
                     }
+                    
+                    Log.d("VideoUseCase", "🎯 Found ${playlistVideos.size} matching videos for playlist ${currentPlaylist.id}")
                     
                     if (playlistVideos.isEmpty()) {
                         Log.w("VideoUseCase", "No videos found for playlist ${currentPlaylist.id}")
@@ -292,7 +357,7 @@ class VideoUseCase(
                         try {
                             // Hide loading UI
                             try {
-                                uiUseCase.hideLoading(videoView)
+                            uiUseCase.hideLoading(videoView)
                             } catch (e: Exception) {
                                 Log.e("VideoUseCase", "Error hiding loading UI: ${e.message}")
                             }
@@ -315,7 +380,7 @@ class VideoUseCase(
             e.printStackTrace()
             activity.runOnUiThread {
                 try {
-                    uiUseCase.showToast("Lỗi khi phát video: ${e.message}")
+                uiUseCase.showToast("Lỗi khi phát video: ${e.message}")
                 } catch (e: Exception) {
                     Log.e("VideoUseCase", "Error showing toast: ${e.message}")
                 }
@@ -339,7 +404,7 @@ class VideoUseCase(
             Log.e("VideoUseCase", "Error in initializeApp: ${e.message}")
             e.printStackTrace()
             try {
-                uiUseCase.showStatus("Lỗi khởi tạo: ${e.message}")
+            uiUseCase.showStatus("Lỗi khởi tạo: ${e.message}")
             } catch (e: Exception) {
                 Log.e("VideoUseCase", "Error showing status: ${e.message}")
             }

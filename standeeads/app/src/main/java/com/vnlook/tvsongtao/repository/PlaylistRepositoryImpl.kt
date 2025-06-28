@@ -45,15 +45,16 @@ class PlaylistRepositoryImpl(private val context: Context) : PlaylistRepository 
             }
         }
         
-        Log.d(TAG, "📡 Network available, making direct API call to VNL API endpoint")
+        Log.d(TAG, "📡 Network available, making API call to VNL API endpoint")
         
-        // Make the API call using VNLApiClient
+        // Make API call - VNLApiClient already checks for HTTP 200 status
         val apiResponse = VNLApiClient.getPlaylists()
         
+        // VNLApiClient returns null if status != 200 or on error
         if (apiResponse.isNullOrEmpty()) {
-            Log.e(TAG, "API call failed or returned empty response, trying SharedPreferences fallback")
+            Log.w(TAG, "🚫 API FAILED (status != 200 or error) - Using cached playlists fallback")
             
-            // Fallback to SharedPreferences if API fails
+            // Fallback to cached playlists when API fails
             val cachedPlaylists = dataManager.getPlaylists()
             if (cachedPlaylists.isNotEmpty()) {
                 Log.d(TAG, "✅ Using cached playlists as fallback: ${cachedPlaylists.size} playlists")
@@ -64,9 +65,11 @@ class PlaylistRepositoryImpl(private val context: Context) : PlaylistRepository 
             }
         }
         
-        // Parse the API response
-        val (playlists, _) = VNLApiResponseParser.parseApiResponse(apiResponse)
-        Log.d(TAG, "Successfully retrieved ${playlists.size} playlists from API")
+        Log.d(TAG, "✅ API SUCCESS (status 200) - Processing response...")
+        
+        // Parse the API response - IMPORTANT: Get both playlists AND videos
+        val (playlists, videos) = VNLApiResponseParser.parseApiResponse(apiResponse)
+        Log.d(TAG, "Successfully retrieved ${playlists.size} playlists and ${videos.size} videos from API")
         
         // Save the API response to file for offline use
         saveApiResponseToFile(apiResponse)
@@ -86,9 +89,20 @@ class PlaylistRepositoryImpl(private val context: Context) : PlaylistRepository 
         
         Log.d(TAG, "Filtered playlists based on device info: ${filteredPlaylists.size} of ${playlists.size}")
         
-        // Save filtered playlists to SharedPreferences for offline use
+        // Filter videos to only include those in filtered playlists
+        val filteredVideoIds = filteredPlaylists.flatMap { it.videoIds }.toSet()
+        val filteredVideos = videos.filter { it.id in filteredVideoIds }
+        Log.d(TAG, "Filtered videos based on device playlists: ${filteredVideos.size} of ${videos.size}")
+        
+        // IMPORTANT: Only update cache when API returns status 200 (success)
+        Log.d(TAG, "💾 API SUCCESS - Updating cache with new playlists and videos")
         dataManager.savePlaylists(filteredPlaylists)
-        Log.d(TAG, "✅ Saved ${filteredPlaylists.size} playlists to SharedPreferences cache")
+        
+        // CRITICAL FIX: Save videos to cache using mergeVideos for download status preservation
+        val mergedVideos = dataManager.mergeVideos(filteredVideos)
+        dataManager.saveVideos(mergedVideos)
+        
+        Log.d(TAG, "✅ Cache updated with ${filteredPlaylists.size} playlists and ${mergedVideos.size} videos")
         
         return filteredPlaylists
     }

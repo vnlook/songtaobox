@@ -228,6 +228,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         Log.d(TAG, "🚀 Starting initialization flow...")
         
         // Check permissions immediately
+        Log.d(TAG, "🔒 Checking permissions status...")
+        permissionUseCase.areAllPermissionsGranted() // This will log detailed status
+        
         if (permissionUseCase.checkAndRequestPermissions()) {
             Log.d(TAG, "✅ All permissions granted in DigitalClockActivity")
         } else {
@@ -246,9 +249,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         
         if (hasNetwork) {
             Log.d(TAG, "🌐 Network available - proceeding with full initialization")
-            // Register device info if needed
-            registerDeviceInfo()
-            
+        // Register device info if needed
+        registerDeviceInfo()
+        
             // Start checking for playlists
             checkCompareAndDownloadPlaylists()
         } else {
@@ -406,9 +409,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
                 }
                 
                 // Initialize video download manager for API call
-                if (!::videoDownloadManager.isInitialized) {
-                    videoDownloadManager = VideoDownloadManager(this)
-                    videoDownloadManager.setDownloadListener(this)
+            if (!::videoDownloadManager.isInitialized) {
+                videoDownloadManager = VideoDownloadManager(this)
+                videoDownloadManager.setDownloadListener(this)
                 }
                 
                 // Call API once

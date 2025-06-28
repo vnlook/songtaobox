@@ -89,104 +89,134 @@ class UIUseCase(private val activity: MainActivity) {
     }
     
     /**
-     * Show status message
+     * Show status message - always runs on UI thread
      */
     fun showStatus(message: String) {
         try {
-            tvStatus?.let {
-                it.text = message
-                Log.d("UIUseCase", "Status: $message")
-            } ?: Log.w("UIUseCase", "Cannot show status, tvStatus not initialized: $message")
+            activity.runOnUiThread {
+                try {
+                    tvStatus?.let {
+                        it.text = message
+                        Log.d("UIUseCase", "Status: $message")
+                    } ?: Log.w("UIUseCase", "Cannot show status, tvStatus not initialized: $message")
+                } catch (e: Exception) {
+                    Log.e("UIUseCase", "Error showing status on UI thread: ${e.message}")
+                }
+            }
         } catch (e: Exception) {
             Log.e("UIUseCase", "Error showing status: ${e.message}")
         }
     }
     
     /**
-     * Update progress UI with animation
+     * Update progress UI with animation - always runs on UI thread
      */
     fun updateProgressUI(progress: Int) {
         try {
-            val progressBarLocal = progressBar
-            val tvPercentageLocal = tvPercentage
-            
-            if (progressBarLocal != null && tvPercentageLocal != null) {
-                // Don't update if progress hasn't changed or is less than previous (unless it's a reset to 0)
-                if (progress == lastProgress || (progress < lastProgress && progress > 0)) {
-                    return
-                }
-                
-                // Animate progress changes for smoother UI
-                progressAnimator.cancel()
-                progressAnimator.setIntValues(lastProgress, progress)
-                progressAnimator.addUpdateListener { animation ->
+            activity.runOnUiThread {
+                try {
+                    val progressBarLocal = progressBar
+                    val tvPercentageLocal = tvPercentage
+                    
+                    if (progressBarLocal != null && tvPercentageLocal != null) {
+                        // Don't update if progress hasn't changed or is less than previous (unless it's a reset to 0)
+                        if (progress == lastProgress || (progress < lastProgress && progress > 0)) {
+                            return@runOnUiThread
+                        }
+                        
+                        // Animate progress changes for smoother UI
+                        progressAnimator.cancel()
+                        progressAnimator.setIntValues(lastProgress, progress)
+                        progressAnimator.addUpdateListener { animation ->
+                            try {
+                                val animatedValue = animation.animatedValue as Int
+                                progressBarLocal.progress = animatedValue
+                                tvPercentageLocal.text = "$animatedValue%"
+                            } catch (e: Exception) {
+                                Log.e("UIUseCase", "Error in progress animation: ${e.message}")
+                            }
+                        }
+                        
+                        // Faster animation for small changes, slower for large jumps
+                        val animDuration = when {
+                            progress - lastProgress > 50 -> 800L  // Big jump
+                            progress - lastProgress > 20 -> 500L  // Medium jump
+                            else -> 300L  // Small change
+                        }
+                        
+                        progressAnimator.duration = animDuration
+                        progressAnimator.start()
+                        
+                        lastProgress = progress
+                        Log.d("UIUseCase", "Progress updated to $progress%")
+                    } else {
+                        Log.w("UIUseCase", "Cannot update progress UI, views not initialized: $progress%")
+                    }
+                } catch (e: Exception) {
+                    Log.e("UIUseCase", "Error updating progress UI on UI thread: ${e.message}")
+                    // Fallback to direct update without animation
                     try {
-                        val animatedValue = animation.animatedValue as Int
-                        progressBarLocal.progress = animatedValue
-                        tvPercentageLocal.text = "$animatedValue%"
-                    } catch (e: Exception) {
-                        Log.e("UIUseCase", "Error in progress animation: ${e.message}")
+                        progressBar?.progress = progress
+                        tvPercentage?.text = "$progress%"
+                        lastProgress = progress
+                    } catch (e2: Exception) {
+                        Log.e("UIUseCase", "Error in fallback progress update: ${e2.message}")
                     }
                 }
-                
-                // Faster animation for small changes, slower for large jumps
-                val animDuration = when {
-                    progress - lastProgress > 50 -> 800L  // Big jump
-                    progress - lastProgress > 20 -> 500L  // Medium jump
-                    else -> 300L  // Small change
-                }
-                
-                progressAnimator.duration = animDuration
-                progressAnimator.start()
-                
-                lastProgress = progress
-                Log.d("UIUseCase", "Progress updated to $progress%")
-            } else {
-                Log.w("UIUseCase", "Cannot update progress UI, views not initialized: $progress%")
             }
         } catch (e: Exception) {
             Log.e("UIUseCase", "Error updating progress UI: ${e.message}")
-            // Fallback to direct update without animation
-            try {
-                progressBar?.progress = progress
-                tvPercentage?.text = "$progress%"
-                lastProgress = progress
-            } catch (e2: Exception) {
-                Log.e("UIUseCase", "Error in fallback progress update: ${e2.message}")
-            }
         }
     }
     
-    /**
-     * Show loading UI
+        /**
+     * Show loading UI - always runs on UI thread
      */
     fun showLoading(videoView: View) {
         try {
-            loadingContainer?.visibility = View.VISIBLE
-            videoView.visibility = View.GONE
+            activity.runOnUiThread {
+                try {
+                    loadingContainer?.visibility = View.VISIBLE
+                    videoView.visibility = View.GONE
+                } catch (e: Exception) {
+                    Log.e("UIUseCase", "Error showing loading on UI thread: ${e.message}")
+                }
+            }
         } catch (e: Exception) {
             Log.e("UIUseCase", "Error showing loading: ${e.message}")
         }
     }
-    
+
     /**
-     * Hide loading UI
+     * Hide loading UI - always runs on UI thread
      */
     fun hideLoading(videoView: View) {
         try {
-            loadingContainer?.visibility = View.GONE
-            videoView.visibility = View.VISIBLE
+            activity.runOnUiThread {
+                try {
+                    loadingContainer?.visibility = View.GONE
+                    videoView.visibility = View.VISIBLE
+                } catch (e: Exception) {
+                    Log.e("UIUseCase", "Error hiding loading on UI thread: ${e.message}")
+                }
+            }
         } catch (e: Exception) {
             Log.e("UIUseCase", "Error hiding loading: ${e.message}")
         }
     }
-    
+
     /**
-     * Set title text
+     * Set title text - always runs on UI thread
      */
     fun setTitle(title: String) {
         try {
-            tvTitle?.text = title
+            activity.runOnUiThread {
+                try {
+                    tvTitle?.text = title
+                } catch (e: Exception) {
+                    Log.e("UIUseCase", "Error setting title on UI thread: ${e.message}")
+                }
+            }
         } catch (e: Exception) {
             Log.e("UIUseCase", "Error setting title: ${e.message}")
         }
