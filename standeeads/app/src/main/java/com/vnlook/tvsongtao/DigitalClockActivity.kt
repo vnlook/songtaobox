@@ -290,10 +290,17 @@ class DigitalClockActivity : AppCompatActivity() {
                     val hasValidVideos = checkIfValidVideosExist(cachedPlaylists)
                     
                     if (hasValidVideos) {
-                        Log.d(TAG, "🎬 Found valid videos, switching to MainActivity")
-                        withContext(Dispatchers.Main) {
-                            switchToMainActivity()
+
+                        val  currentPlaylist = playlistScheduler.getCurrentPlaylist(cachedPlaylists)
+                        if (currentPlaylist != null) {
+                            Log.d(TAG, "🎬 Found valid videos, switching to MainActivity")
+                            withContext(Dispatchers.Main) {
+                                switchToMainActivity()
+                            }
+                        } else {
+                            Log.d(TAG, "📭 No valid playlist found for cached playlists")
                         }
+
                     } else {
                         Log.d(TAG, "📭 No valid videos found for cached playlists")
                     }

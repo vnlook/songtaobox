@@ -1,14 +1,8 @@
 package com.vnlook.tvsongtao.utils
 
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.net.Uri
-import android.os.Build
 import android.util.Log
-import androidx.media3.common.AudioAttributes as ExoPlayerAudioAttributes
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -27,35 +21,53 @@ class VideoPlayer(
     private val dataManager = DataManager(context)
     private val downloadHelper = VideoDownloadHelper(context)
     private var currentPlaylist: Playlist? = null
-    private var currentVideoIndex = 0
     private var videos: List<Video> = emptyList()
-    private var isPlayingVideo = false
 
     private val player: ExoPlayer = ExoPlayer.Builder(context).build()
 
     init {
         playerView.player = player
+        
+        // Enable repeat mode for continuous playback
+        player.repeatMode = Player.REPEAT_MODE_ALL
 
         // Gắn listener cho trạng thái phát
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) {
-                    Log.d(TAG, "Video completed")
-                    isPlayingVideo = false
-                    currentVideoIndex++
-                    playCurrentVideo()
+                when (state) {
+                    Player.STATE_READY -> {
+                        Log.d(TAG, "Player ready")
+                    }
+                    Player.STATE_ENDED -> {
+                        Log.d(TAG, "Playlist ended - but should repeat due to REPEAT_MODE_ALL")
+                        // With REPEAT_MODE_ALL, this shouldn't happen unless there are no valid videos
+                        onPlaylistFinished()
+                    }
+                    Player.STATE_BUFFERING -> {
+                        Log.d(TAG, "Player buffering")
+                    }
+                    Player.STATE_IDLE -> {
+                        Log.d(TAG, "Player idle")
+                    }
                 }
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.e(TAG, "Playback error: ${error.message}")
-                isPlayingVideo = false
-                currentVideoIndex++
-                playCurrentVideo()
+                // Skip to next video in case of error
+                if (player.hasNextMediaItem()) {
+                    player.seekToNextMediaItem()
+                } else {
+                    // If no more videos, try to restart playlist
+                    if (videos.isNotEmpty()) {
+                        setupPlaylist()
+                    } else {
+                        onPlaylistFinished()
+                    }
+                }
             }
         })
     }
-
 
     fun playPlaylist(playlist: Playlist) {
         currentPlaylist = playlist
@@ -67,8 +79,40 @@ class VideoPlayer(
             return
         }
 
-        currentVideoIndex = 0
-        playCurrentVideo()
+        setupPlaylist()
+    }
+
+    private fun setupPlaylist() {
+        val mediaItems = videos.mapNotNull { video ->
+            val videoPath = if (!video.localPath.isNullOrEmpty()) {
+                video.localPath!!
+            } else {
+                downloadHelper.getVideoDownloadPath(video.url ?: "")
+            }
+            
+            val file = File(videoPath)
+            if (!file.exists()) {
+                Log.e(TAG, "Video file not found: $videoPath")
+                return@mapNotNull null
+            }
+            
+            val uri = Uri.fromFile(file)
+            Log.d(TAG, "Adding video to playlist: ${video.id}, URI: $uri")
+            MediaItem.fromUri(uri)
+        }
+        
+        if (mediaItems.isEmpty()) {
+            Log.d(TAG, "No valid media items found")
+            onPlaylistFinished()
+            return
+        }
+        
+        Log.d(TAG, "🎬 Setting up playlist with ${mediaItems.size} videos")
+        
+        // Set all media items at once
+        player.setMediaItems(mediaItems)
+        player.prepare()
+        player.play()
     }
 
     private fun getVideosForPlaylist(playlist: Playlist): List<Video> {
@@ -98,60 +142,8 @@ class VideoPlayer(
         return downloadedVideos
     }
 
-    private fun playCurrentVideo() {
-        if (isPlayingVideo) {
-            Log.d(TAG, "Already playing a video, ignoring call to playCurrentVideo()")
-            return
-        }
-
-        if (currentVideoIndex >= videos.size) {
-            currentVideoIndex = 0
-            onPlaylistFinished()
-            return
-        }
-
-        val video = videos[currentVideoIndex]
-        
-        // Use localPath if available, otherwise use helper to get path from URL
-        val videoPath = if (!video.localPath.isNullOrEmpty()) {
-            video.localPath!!
-        } else {
-            downloadHelper.getVideoDownloadPath(video.url ?: "")
-        }
-        
-        Log.d(TAG, "🎬 Playing video ${video.id}, path: $videoPath")
-        val file = File(videoPath)
-
-        if (!file.exists()) {
-            Log.e(TAG, "Video file not found: $videoPath")
-            currentVideoIndex++
-            playCurrentVideo()
-            return
-        }
-
-        try {
-            isPlayingVideo = true
-            val uri = Uri.fromFile(file)
-            Log.d(TAG, "Playing video: ${video.id}, URI: $uri")
-
-            val mediaItem = MediaItem.fromUri(uri)
-            player.setMediaItem(mediaItem)
-            player.prepare()
-            
-            player.play()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error playing video: ${e.message}")
-            e.printStackTrace()
-            isPlayingVideo = false
-            currentVideoIndex++
-            playCurrentVideo()
-        }
-    }
-
     fun stop() {
         player.stop()
-        isPlayingVideo = false
         Log.d(TAG, "Video playback stopped")
     }
 
