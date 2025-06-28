@@ -37,6 +37,7 @@ import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -71,7 +72,7 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     // Video Download Manager
     private lateinit var videoDownloadManager: VideoDownloadManager
     
-    // Coroutine scope
+    // Coroutine scope with crash protection
     private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     
     // Handler for time updates
@@ -115,6 +116,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
             return
         }
         
+        // ADDITIONAL PROTECTION: Wrap entire onCreate in try-catch
+        try {
+        
         // Set full screen
         window.setFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -154,8 +158,25 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         
         // Start the main initialization flow with a slight delay to ensure UI is rendered
         handler.postDelayed({
-            startInitializationFlow()
+            try {
+                startInitializationFlow()
+            } catch (e: Exception) {
+                Log.e(TAG, "💥 Error in delayed initialization: ${e.message}")
+                e.printStackTrace()
+            }
         }, 500) // Reduced delay but still allow UI to render
+        
+        } catch (e: Exception) {
+            Log.e(TAG, "💥 CRITICAL: Error in onCreate: ${e.message}")
+            e.printStackTrace()
+            // Try to at least show basic UI
+            try {
+                setContentView(R.layout.digital_clock_screen)
+                initializeViews()
+            } catch (e2: Exception) {
+                Log.e(TAG, "💥 CRITICAL: Failed to initialize basic UI: ${e2.message}")
+            }
+        }
     }
     
     private fun initializeViews() {
@@ -459,43 +480,82 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     /**
      * Check for changelog updates in the background
      * If there are changes, reload playlists
+     * CRASH-SAFE: Protected against all potential crashes
      */
     private fun checkForChangelogUpdates() {
-        // Check network connectivity first
-        if (!NetworkUtil.isNetworkAvailable(this)) {
-            Log.d(TAG, "No network available, skipping changelog check")
-            return
-        }
-        
-        coroutineScope.launch {
-            try {
-                Log.d(TAG, "Checking for changelog updates with network available")
-                
-                // Check if there are changes in the changelog
-                val hasChanges = changelogUtil.checkChange()
-                
-                if (hasChanges) {
-                    Log.d(TAG, "Changelog updates detected, reloading playlists")
-                    
-                    // Reload playlists from API
-                    withContext(Dispatchers.Main) {
-                        // Re-initialize video download manager to reload playlists
-                        if (::videoDownloadManager.isInitialized) {
-                            videoDownloadManager.cleanup()
-                        }
-                        videoDownloadManager = VideoDownloadManager(this@DigitalClockActivity)
-                        videoDownloadManager.setDownloadListener(this@DigitalClockActivity)
-                        videoDownloadManager.initializeVideoDownloadWithNetworkCheck(this@DigitalClockActivity)
-                        
-                        Log.d(TAG, "Playlists reloaded due to changelog updates with network check")
-                    }
-                } else {
-                    Log.d(TAG, "No changelog updates detected")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking for changelog updates: ${e.message}")
-                e.printStackTrace()
+        try {
+            // PROTECTION: Check if activity is still valid
+            if (isFinishing || isDestroyed) {
+                Log.d(TAG, "⚠️ Activity invalid, skipping changelog check")
+                return
             }
+            
+            // Check network connectivity first
+            if (!NetworkUtil.isNetworkAvailable(this)) {
+                Log.d(TAG, "🚫 No network available, skipping changelog check")
+                return
+            }
+            
+            // Use SupervisorJob coroutine scope for crash protection
+            coroutineScope.launch {
+                var hasChanges = false
+                try {
+                    Log.d(TAG, "🔍 Checking for changelog updates with network available")
+                    
+                    // Check if there are changes in the changelog with protection
+                    hasChanges = changelogUtil.checkChange()
+                    Log.d(TAG, "📊 Changelog check result: hasChanges=$hasChanges")
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "💥 Error in changelog API call: ${e.message}")
+                    e.printStackTrace()
+                    // Continue with hasChanges = false (safe fallback)
+                }
+                
+                // Process result safely
+                try {
+                    if (hasChanges) {
+                        Log.d(TAG, "🔄 Changelog updates detected, reloading playlists")
+                        
+                        // Reload playlists from API with safety checks
+                        withContext(Dispatchers.Main) {
+                            try {
+                                // Check activity validity again
+                                if (isFinishing || isDestroyed) {
+                                    Log.d(TAG, "⚠️ Activity became invalid, skipping reload")
+                                    return@withContext
+                                }
+                                
+                                // Re-initialize video download manager to reload playlists
+                                if (::videoDownloadManager.isInitialized) {
+                                    try {
+                                        videoDownloadManager.cleanup()
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Error cleaning up video download manager: ${e.message}")
+                                    }
+                                }
+                                
+                                videoDownloadManager = VideoDownloadManager(this@DigitalClockActivity)
+                                videoDownloadManager.setDownloadListener(this@DigitalClockActivity)
+                                videoDownloadManager.initializeVideoDownloadWithNetworkCheck(this@DigitalClockActivity)
+                                
+                                Log.d(TAG, "✅ Playlists reloaded due to changelog updates with network check")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "💥 Error reloading playlists: ${e.message}")
+                                e.printStackTrace()
+                            }
+                        }
+                    } else {
+                        Log.d(TAG, "✅ No changelog updates detected")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "💥 Error processing changelog result: ${e.message}")
+                    e.printStackTrace()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "💥 CRITICAL: Error in checkForChangelogUpdates outer try-catch: ${e.message}")
+            e.printStackTrace()
         }
     }
     
@@ -686,26 +746,64 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     }
     
     override fun onDestroy() {
-        super.onDestroy()
-        
-        Log.d(TAG, "🔄 DigitalClockActivity onDestroy - resetting flags")
-        
-        // Reset all protection flags to allow fresh initialization if activity is recreated
-        isLocationComponentsInitialized = false
-        isVideoDownloadInitialized = false
-        isDeviceRegistered = false
-        isInitializationStarted = false
-        // Keep isFirstLoad as is - it should persist across activity recreations
-        
-        // Disable kiosk mode when activity is destroyed
         try {
-            kioskModeManager.stopLockTask(this)
+            Log.d(TAG, "🔄 DigitalClockActivity onDestroy started")
+            
+            // Cancel coroutine scope first to stop any ongoing operations
+            try {
+                coroutineScope.cancel()
+                Log.d(TAG, "✅ Coroutine scope cancelled")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error cancelling coroutine scope: ${e.message}")
+            }
+            
+            // Remove any pending handlers
+            try {
+                handler.removeCallbacksAndMessages(null)
+                Log.d(TAG, "✅ Handler callbacks removed")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing handler callbacks: ${e.message}")
+            }
+            
+            // Reset all protection flags to allow fresh initialization if activity is recreated
+            isLocationComponentsInitialized = false
+            isVideoDownloadInitialized = false
+            isDeviceRegistered = false
+            isInitializationStarted = false
+            // Keep isFirstLoad as is - it should persist across activity recreations
+            
+            // Cleanup video download manager
+            try {
+                if (::videoDownloadManager.isInitialized) {
+                    videoDownloadManager.cleanup()
+                    Log.d(TAG, "✅ Video download manager cleaned up")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error cleaning up video download manager: ${e.message}")
+            }
+            
+            // Disable kiosk mode when activity is destroyed
+            try {
+                if (::kioskModeManager.isInitialized) {
+                    kioskModeManager.stopLockTask(this)
+                    Log.d(TAG, "✅ Kiosk mode disabled")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error disabling kiosk mode: ${e.message}")
+            }
+            
+            Log.d(TAG, "✅ DigitalClockActivity onDestroy completed successfully")
+            
         } catch (e: Exception) {
-            Log.e(TAG, "Error disabling kiosk mode: ${e.message}")
-        }
-        
-        if (::videoDownloadManager.isInitialized) {
-            videoDownloadManager.cleanup()
+            Log.e(TAG, "💥 CRITICAL: Error in onDestroy: ${e.message}")
+            e.printStackTrace()
+        } finally {
+            // Always call super.onDestroy() even if there are errors
+            try {
+                super.onDestroy()
+            } catch (e: Exception) {
+                Log.e(TAG, "💥 Error calling super.onDestroy(): ${e.message}")
+            }
         }
     }
 }

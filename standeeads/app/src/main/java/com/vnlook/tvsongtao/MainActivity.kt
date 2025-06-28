@@ -143,6 +143,10 @@ class MainActivity : AppCompatActivity() {
         // Initialize video usecase after data usecase
         videoUseCase = VideoUseCase(this, videoView, uiUseCase, dataUseCase)
         
+        // NOTE: Changelog timer is now managed globally by ChangelogTimerManager singleton
+        // Started automatically in StandeeAdsApplication.onCreate()
+        Log.i("MainActivity", "📋 Using global changelog timer from ChangelogTimerManager")
+        
         // Initialize app lifecycle usecase last
         appLifecycleUseCase = AppLifecycleUseCase(this, videoView, uiUseCase, videoUseCase)
     }

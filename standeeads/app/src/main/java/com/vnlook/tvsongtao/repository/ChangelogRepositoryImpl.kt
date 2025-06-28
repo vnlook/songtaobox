@@ -29,6 +29,7 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
      * @return Latest changelog entry or null if API call failed
      */
     override suspend fun getLatestChangelog(): Changelog? = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
         try {
             val urlString = "$API_URL?$API_PARAMS"
             val url = URL(urlString)
@@ -43,7 +44,7 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
             ApiLogger.logRequest(urlString, "GET", headers)
             
             // Open connection
-            val connection = url.openConnection() as HttpURLConnection
+            connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             
             // Set headers
@@ -58,7 +59,7 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
             
             // Get response
             val responseCode = connection.responseCode
-            Log.d(TAG, "API response code: $responseCode")
+            Log.d(TAG, "Changelog API response code: $responseCode")
             
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 // Read response
@@ -72,19 +73,53 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
                 reader.close()
                 
                 val responseString = response.toString()
-                Log.d(TAG, "API response received: ${responseString.length} bytes")
-                Log.d(TAG, "API response preview: ${responseString.take(100)}...")
+                Log.d(TAG, "✅ Changelog API response received: ${responseString.length} bytes")
                 
                 // Parse the response
                 return@withContext parseChangelogResponse(responseString)
             } else {
-                Log.e(TAG, "API request failed with response code: $responseCode")
+                Log.e(TAG, "❌ Changelog API failed with HTTP $responseCode")
+                // Try to read error response
+                try {
+                    val errorReader = BufferedReader(InputStreamReader(connection.errorStream ?: connection.inputStream))
+                    val errorResponse = StringBuilder()
+                    var errorLine: String?
+                    while (errorReader.readLine().also { errorLine = it } != null) {
+                        errorResponse.append(errorLine)
+                    }
+                    errorReader.close()
+                    Log.e(TAG, "Error response: ${errorResponse.toString().take(200)}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Could not read error response: ${e.message}")
+                }
                 return@withContext null
             }
+        } catch (e: java.net.SocketTimeoutException) {
+            Log.e(TAG, "🕐 Changelog API timeout: ${e.message}")
+            return@withContext null
+        } catch (e: java.net.UnknownHostException) {
+            Log.e(TAG, "🌐 Changelog API network error - unknown host: ${e.message}")
+            return@withContext null
+        } catch (e: java.net.ConnectException) {
+            Log.e(TAG, "🔌 Changelog API connection error: ${e.message}")
+            return@withContext null
+        } catch (e: javax.net.ssl.SSLException) {
+            Log.e(TAG, "🔒 Changelog API SSL error: ${e.message}")
+            return@withContext null
+        } catch (e: java.io.IOException) {
+            Log.e(TAG, "📡 Changelog API IO error: ${e.message}")
+            return@withContext null
         } catch (e: Exception) {
-            Log.e(TAG, "Error making API request: ${e.message}")
+            Log.e(TAG, "💥 Changelog API unexpected error: ${e.message}")
             e.printStackTrace()
             return@withContext null
+        } finally {
+            // Always close connection
+            try {
+                connection?.disconnect()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error closing connection: ${e.message}")
+            }
         }
     }
     
@@ -95,17 +130,56 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
      */
     private fun parseChangelogResponse(responseString: String): Changelog? {
         try {
-            val jsonObject = JsonParser.parseString(responseString).asJsonObject
-            val dataArray = jsonObject.getAsJsonArray("data")
-            
-            if (dataArray != null && dataArray.size() > 0) {
-                val changelogJson = dataArray.get(0).asJsonObject
-                return gson.fromJson(changelogJson, Changelog::class.java)
+            // Check if response is empty or blank
+            if (responseString.isBlank()) {
+                Log.e(TAG, "❌ Empty response string from changelog API")
+                return null
             }
             
+            Log.d(TAG, "🔍 Parsing changelog response...")
+            val jsonObject = JsonParser.parseString(responseString).asJsonObject
+            
+            // Check if data field exists
+            if (!jsonObject.has("data")) {
+                Log.e(TAG, "❌ Response missing 'data' field")
+                return null
+            }
+            
+            val dataArray = jsonObject.getAsJsonArray("data")
+            
+            if (dataArray == null) {
+                Log.e(TAG, "❌ 'data' field is not an array")
+                return null
+            }
+            
+            if (dataArray.size() == 0) {
+                Log.w(TAG, "⚠️ Empty data array - no changelog entries found")
+                return null
+            }
+            
+            val changelogJson = dataArray.get(0).asJsonObject
+            val changelog = gson.fromJson(changelogJson, Changelog::class.java)
+            
+            if (changelog?.date_created.isNullOrBlank()) {
+                Log.e(TAG, "❌ Parsed changelog has invalid date_created field")
+                return null
+            }
+            
+            Log.d(TAG, "✅ Successfully parsed changelog: ${changelog.date_created}")
+            return changelog
+            
+        } catch (e: com.google.gson.JsonSyntaxException) {
+            Log.e(TAG, "📝 JSON syntax error parsing changelog: ${e.message}")
+            Log.e(TAG, "Response preview: ${responseString.take(200)}")
+            return null
+        } catch (e: com.google.gson.JsonParseException) {
+            Log.e(TAG, "📝 JSON parse error: ${e.message}")
+            return null
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "📝 JSON structure error: ${e.message}")
             return null
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing changelog response: ${e.message}")
+            Log.e(TAG, "💥 Unexpected error parsing changelog response: ${e.message}")
             e.printStackTrace()
             return null
         }

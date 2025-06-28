@@ -12,8 +12,6 @@ import android.util.Log
 import com.vnlook.tvsongtao.DigitalClockActivity
 import com.vnlook.tvsongtao.repository.ChangelogRepository
 import com.vnlook.tvsongtao.repository.ChangelogRepositoryImpl
-import com.vnlook.tvsongtao.repository.DeviceRepository
-import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,24 +32,12 @@ class ChangelogSchedulerJob : JobService() {
 
         /**
          * Schedule the changelog job to run every 15 minutes
+         * DISABLED: ChangelogTimerManager singleton now handles changelog checking
          */
         fun schedule(context: Context) {
-            val jobScheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
-            
-            val jobInfo = JobInfo.Builder(JOB_ID, ComponentName(context, ChangelogSchedulerJob::class.java))
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                .setPersisted(true)
-                .setPeriodic(15 * 60 * 1000L) // 15 minutes
-                .setRequiresCharging(false)
-                .setRequiresDeviceIdle(false)
-                .build()
-            
-            val result = jobScheduler.schedule(jobInfo)
-            if (result == JobScheduler.RESULT_SUCCESS) {
-                Log.d(TAG, "✅ Changelog job scheduled successfully (every 15 minutes)")
-            } else {
-                Log.e(TAG, "❌ Failed to schedule changelog job")
-            }
+            Log.i(TAG, "📋 ChangelogSchedulerJob.schedule() called but DISABLED")
+            Log.i(TAG, "📋 Using ChangelogTimerManager singleton instead for changelog checking")
+            // No-op: Global timer in ChangelogTimerManager handles this now
         }
         
         /**
@@ -107,42 +93,16 @@ class ChangelogSchedulerJob : JobService() {
                 }
                 
                 if (hasChanges) {
-                    Log.d(TAG, "📝 Changelog updates detected, refreshing data in background (no activity reload)")
+                    Log.d(TAG, "📝 Changelog updates detected, restarting DigitalClockActivity")
                     
-                    // Only refresh VideoDownloadManager in background, don't restart activities
-                    try {
-                        val videoDownloadManager = VideoDownloadManager(applicationContext)
-                        videoDownloadManager.initializeVideoDownloadWithNetworkCheck(null)
-                        Log.d(TAG, "✅ Background data refresh initiated from scheduler")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "❌ Error refreshing data in scheduler: ${e.message}")
-                    }
+                    // Restart the DigitalClockActivity to reload everything
+                    reloadPlaylists()
                     
                 } else {
                     Log.d(TAG, "📭 No changelog updates detected")
                 }
                 
-                // Also register device info if network is available
-                try {
-                    Log.d(TAG, "📱 Updating device info in background...")
-                    val deviceRepository = DeviceRepositoryImpl(applicationContext)
-                    val deviceInfoUtil = DeviceInfoUtil(applicationContext, deviceRepository)
-                    val result = deviceInfoUtil.registerOrUpdateDevice()
-                    
-                    if (result != null) {
-                        Log.d(TAG, "✅ Device registration successful in scheduler")
-                    } else {
-                        Log.d(TAG, "📭 Device registration returned null in scheduler")
-                    }
-                } catch (e: java.net.SocketTimeoutException) {
-                    Log.w(TAG, "⏱️ Device registration timeout in scheduler")
-                } catch (e: java.net.ConnectException) {
-                    Log.w(TAG, "🔌 Device registration connection failed in scheduler")
-                } catch (e: java.io.IOException) {
-                    Log.w(TAG, "🌐 Device registration network error in scheduler: ${e.message}")
-                } catch (e: Exception) {
-                    Log.w(TAG, "❌ Device registration failed in scheduler: ${e.message}")
-                }
+                // Note: Device info update is now handled inside checkChange() method
                 
             } catch (e: Exception) {
                 Log.e(TAG, "💥 Unexpected error in changelog job: ${e.message}")
@@ -168,14 +128,15 @@ class ChangelogSchedulerJob : JobService() {
      */
     private fun reloadPlaylists() {
         try {
-            Log.d(TAG, "🚫 DISABLED playlist reload to prevent continuous activity restarts")
+            Log.d(TAG, "🔄 Restarting DigitalClockActivity due to changelog changes")
             
-            // DISABLED: Create an intent to start the DigitalClockActivity
-            // DISABLED: val intent = Intent(applicationContext, DigitalClockActivity::class.java)
-            // DISABLED: intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            // Create an intent to start the DigitalClockActivity
+            val intent = Intent(applicationContext, DigitalClockActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             
-            // DISABLED: Start the activity
-            // DISABLED: applicationContext.startActivity(intent)
+            // Start the activity
+            applicationContext.startActivity(intent)
+            Log.d(TAG, "✅ DigitalClockActivity restart initiated")
         } catch (e: Exception) {
             Log.e(TAG, "Error reloading playlists: ${e.message}")
             e.printStackTrace()

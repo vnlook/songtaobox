@@ -8,8 +8,6 @@ import android.util.Log
 import com.vnlook.tvsongtao.DigitalClockActivity
 import com.vnlook.tvsongtao.repository.ChangelogRepository
 import com.vnlook.tvsongtao.repository.ChangelogRepositoryImpl
-import com.vnlook.tvsongtao.repository.DeviceRepository
-import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -24,8 +22,6 @@ class ChangelogChecker(private val context: Context) {
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     private val changelogRepository: ChangelogRepository = ChangelogRepositoryImpl(context)
     private val changelogUtil = ChangelogUtil(context, changelogRepository)
-    private val deviceRepository: DeviceRepository = DeviceRepositoryImpl(context)
-    private val deviceInfoUtil = DeviceInfoUtil(context, deviceRepository)
     
     companion object {
         // For testing, check every 15 seconds
@@ -54,9 +50,9 @@ class ChangelogChecker(private val context: Context) {
      * Start periodic changelog checks
      */
     fun startChecking() {
-        Log.d(TAG, "🚫 ChangelogChecker DISABLED to prevent continuous loops")
-        // DISABLED: stopChecking() // Stop any existing checker first
-        // DISABLED: handler.post(checkRunnable)
+        Log.d(TAG, "🔄 Starting ChangelogChecker (every 30 minutes)")
+        stopChecking() // Stop any existing checker first
+        handler.post(checkRunnable)
     }
     
     /**
@@ -84,34 +80,15 @@ class ChangelogChecker(private val context: Context) {
         // Run everything in background thread (IO dispatcher)
         coroutineScope.launch(Dispatchers.IO) {
             try {
-                // Update device info with timeout handling
-                try {
-                    Log.d(TAG, "📱 Updating device info with timeout protection...")
-                    val deviceInfoResult = deviceInfoUtil.registerOrUpdateDevice()
-                    Log.d(TAG, "✅ Device info update result: $deviceInfoResult")
-                } catch (e: java.net.SocketTimeoutException) {
-                    Log.w(TAG, "⏱️ Device info update timeout - skipping this cycle")
-                    return@launch
-                } catch (e: java.net.ConnectException) {
-                    Log.w(TAG, "🔌 Device info update connection failed - skipping this cycle")
-                    return@launch
-                } catch (e: java.io.IOException) {
-                    Log.w(TAG, "🌐 Device info update network error - skipping this cycle: ${e.message}")
-                    return@launch
-                } catch (e: Exception) {
-                    Log.w(TAG, "❌ Device info update error - skipping this cycle: ${e.message}")
-                    return@launch
-                }
-                
-                // Check for changelog changes with timeout handling
+                // Check for changelog changes (which also updates device info internally)
                 try {
                     Log.d(TAG, "📝 Checking changelog with timeout protection...")
                 val hasChanges = changelogUtil.checkChange()
                 
                 if (hasChanges) {
-                        Log.d(TAG, "🔄 Changes detected in changelog, refreshing data in background")
-                        // DON'T reload activity, just refresh data in background
-                        refreshDataInBackground()
+                        Log.d(TAG, "🔄 Changes detected in changelog, restarting DigitalClockActivity")
+                        // Restart activity to reload everything
+                        restartDigitalClockActivity()
                 } else {
                         Log.d(TAG, "📭 No changes detected in changelog")
                 }
@@ -136,21 +113,23 @@ class ChangelogChecker(private val context: Context) {
     }
     
     /**
-     * Refresh data in background without reloading activity
-     * This prevents screen flashing and UI interruption
+     * Restart DigitalClockActivity when changelog changes are detected
+     * This ensures the app reloads with fresh data
      */
-    private fun refreshDataInBackground() {
+    private fun restartDigitalClockActivity() {
         try {
-            Log.d(TAG, "🔄 Refreshing playlists data in background (no activity reload)")
+            Log.d(TAG, "🔄 Restarting DigitalClockActivity due to changelog changes")
             
-            // Just refresh the VideoDownloadManager data in background
-            val videoDownloadManager = VideoDownloadManager(context)
-            videoDownloadManager.initializeVideoDownloadWithNetworkCheck(null)
+            // Create an intent to start the DigitalClockActivity
+            val intent = Intent(context, DigitalClockActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             
-            Log.d(TAG, "✅ Background data refresh initiated")
+            // Start the activity
+            context.startActivity(intent)
+            Log.d(TAG, "✅ DigitalClockActivity restart initiated")
             
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error refreshing data in background: ${e.message}")
+            Log.e(TAG, "❌ Error restarting DigitalClockActivity: ${e.message}")
             e.printStackTrace()
         }
     }

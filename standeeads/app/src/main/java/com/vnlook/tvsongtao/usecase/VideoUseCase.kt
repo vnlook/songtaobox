@@ -16,14 +16,15 @@ import com.vnlook.tvsongtao.utils.VideoDownloadManagerListener
 import com.vnlook.tvsongtao.utils.VideoPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
-import java.util.Timer
-import java.util.TimerTask
 
 /**
  * UseCase responsible for video playback and playlist management
+ * NOTE: Changelog checking is now handled by ChangelogTimerManager singleton
  */
 class VideoUseCase(
     private val activity: MainActivity,
@@ -35,11 +36,10 @@ class VideoUseCase(
     private lateinit var videoDownloadManager: VideoDownloadManager
     private lateinit var videoPlayer: VideoPlayer
     private lateinit var playlistScheduler: PlaylistScheduler
-    private var timer: Timer? = null
     private val handler = Handler(Looper.getMainLooper())
     private var isDownloadComplete = false
     private var videosLoaded = false
-    private val coroutineScope = CoroutineScope(Dispatchers.Main)
+    private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     
     /**
      * Initialize video managers
@@ -161,24 +161,6 @@ class VideoUseCase(
     }
     
     /**
-     * Start playlist checker
-     */
-    fun startPlaylistChecker() {
-        try {
-            Log.d("VideoUseCase", "Starting playlist checker")
-            timer = Timer()
-            timer?.schedule(object : TimerTask() {
-                override fun run() {
-                    checkAndPlayCurrentPlaylist()
-                }
-            }, 0, 60000) // Check every minute
-        } catch (e: Exception) {
-            Log.e("VideoUseCase", "Error in startPlaylistChecker: ${e.message}")
-            e.printStackTrace()
-        }
-    }
-    
-    /**
      * Check and play current playlist
      */
     fun checkAndPlayCurrentPlaylist() {
@@ -201,11 +183,30 @@ class VideoUseCase(
                                 // Return to DigitalClockActivity when no playlists available
                                 Log.d("VideoUseCase", "No playlists found - returning to DigitalClockActivity")
                                 
-                                val intent = Intent(activity, DigitalClockActivity::class.java).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                // Check activity state before restart
+                                if (activity.isFinishing || activity.isDestroyed) {
+                                    Log.w("VideoUseCase", "Activity is finishing/destroyed, cannot restart")
+                                    return@withContext
                                 }
-                                activity.startActivity(intent)
-                                activity.finish()
+                                
+                                // Use Handler to post restart safely
+                                Handler(Looper.getMainLooper()).postDelayed({
+                                    try {
+                                        if (!activity.isFinishing && !activity.isDestroyed) {
+                                            val intent = Intent(activity, DigitalClockActivity::class.java).apply {
+                                                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            activity.startActivity(intent)
+                                            activity.finish()
+                                            Log.d("VideoUseCase", "✅ Successfully returned to DigitalClockActivity (no playlists)")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("VideoUseCase", "Error in delayed restart (no playlists): ${e.message}")
+                                        e.printStackTrace()
+                                    }
+                                }, 200)
+                                
                             } catch (e: Exception) {
                                 Log.e("VideoUseCase", "Error returning to DigitalClockActivity: ${e.message}")
                                 // Fallback: just show status
@@ -259,18 +260,42 @@ class VideoUseCase(
                         Log.d("VideoUseCase", "No playlist scheduled for current time - returning to digital clock")
                         withContext(Dispatchers.Main) {
                             try {
-                                if (::videoPlayer.isInitialized) {
-                                    videoPlayer.stop()
+                                // Stop video player safely
+                                try {
+                                    if (::videoPlayer.isInitialized) {
+                                        videoPlayer.stop()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w("VideoUseCase", "Error stopping video player: ${e.message}")
                                 }
                                 
                                 // Return to DigitalClockActivity when no playlist is scheduled
                                 Log.d("VideoUseCase", "No playlist scheduled - returning to DigitalClockActivity")
                                 
-                                val intent = Intent(activity, DigitalClockActivity::class.java).apply {
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                // Check activity state before restart
+                                if (activity.isFinishing || activity.isDestroyed) {
+                                    Log.w("VideoUseCase", "Activity is finishing/destroyed, cannot restart")
+                                    return@withContext
                                 }
-                                activity.startActivity(intent)
-                                activity.finish()
+                                
+                                // Use Handler to post restart safely
+                                Handler(Looper.getMainLooper()).postDelayed({
+                                    try {
+                                        if (!activity.isFinishing && !activity.isDestroyed) {
+                                            val intent = Intent(activity, DigitalClockActivity::class.java).apply {
+                                                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            activity.startActivity(intent)
+                                            activity.finish()
+                                            Log.d("VideoUseCase", "✅ Successfully returned to DigitalClockActivity (no current playlist)")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("VideoUseCase", "Error in delayed restart (no current playlist): ${e.message}")
+                                        e.printStackTrace()
+                                    }
+                                }, 200)
+                                
                             } catch (e: Exception) {
                                 Log.e("VideoUseCase", "Error returning to DigitalClockActivity: ${e.message}")
                                 // Fallback: just show status
@@ -393,9 +418,7 @@ class VideoUseCase(
      */
     fun initializeApp() {
         try {
-            Log.d("VideoUseCase", "Initializing app")
-            // Start playlist checker
-            startPlaylistChecker()
+            Log.i("VideoUseCase", "🚀 INITIALIZING APP...")
             
             // Videos should already be downloaded by ClockScreenActivity
             // Just check and play current playlist
@@ -412,47 +435,57 @@ class VideoUseCase(
     }
     
     /**
-     * Stop and clean up resources
+     * Stop video playback temporarily (for app pause)
      */
-    fun cleanup() {
+    fun stopPlayback() {
         try {
-            // Clean up timer
-            timer?.cancel()
-            timer = null
+            Log.d("VideoUseCase", "Stopping video playback temporarily")
             
-            // Clean up video download manager
-//            if (::videoDownloadManager.isInitialized) {
-//                try {
-//                    videoDownloadManager.cleanup()
-//                } catch (e: Exception) {
-//                    Log.e("VideoUseCase", "Error cleaning up download manager: ${e.message}")
-//                }
-//            }
-            
-            // Stop video player
+            // Stop video player if it exists
             if (::videoPlayer.isInitialized) {
                 try {
+                    Log.d("VideoUseCase", "Stopping video player")
                     videoPlayer.stop()
                 } catch (e: Exception) {
                     Log.e("VideoUseCase", "Error stopping video player: ${e.message}")
                 }
             }
         } catch (e: Exception) {
-            Log.e("VideoUseCase", "Error in cleanup: ${e.message}")
+            Log.e("VideoUseCase", "Error in stopPlayback: ${e.message}")
             e.printStackTrace()
         }
     }
     
     /**
-     * Stop video playback
+     * Stop and clean up resources
      */
-    fun stopPlayback() {
-        if (::videoPlayer.isInitialized) {
-            try {
-                videoPlayer.stop()
-            } catch (e: Exception) {
-                Log.e("VideoUseCase", "Error stopping video player: ${e.message}")
+    fun cleanup() {
+        try {
+            Log.d("VideoUseCase", "🧹 Starting VideoUseCase cleanup...")
+            
+            // Stop video player
+            if (::videoPlayer.isInitialized) {
+                try {
+                    videoPlayer.stop()
+                    Log.d("VideoUseCase", "✅ Video player stopped")
+                } catch (e: Exception) {
+                    Log.e("VideoUseCase", "Error stopping video player: ${e.message}")
+                }
             }
+            
+            // Cancel coroutine scope
+            try {
+                coroutineScope.cancel()
+                Log.d("VideoUseCase", "✅ Coroutine scope cancelled")
+            } catch (e: Exception) {
+                Log.e("VideoUseCase", "Error cancelling coroutine scope: ${e.message}")
+            }
+            
+            Log.i("VideoUseCase", "✅ VideoUseCase cleanup completed")
+            
+        } catch (e: Exception) {
+            Log.e("VideoUseCase", "💥 Error in cleanup: ${e.message}")
+            e.printStackTrace()
         }
     }
     

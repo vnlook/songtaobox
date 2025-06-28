@@ -10,8 +10,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.vnlook.tvsongtao.repository.DeviceRepository
 import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import com.vnlook.tvsongtao.usecase.PermissionUseCase
-import com.vnlook.tvsongtao.utils.ChangelogChecker
-import com.vnlook.tvsongtao.utils.ChangelogSchedulerJob
+import com.vnlook.tvsongtao.utils.ChangelogTimerManager
 import com.vnlook.tvsongtao.utils.DeviceInfoUtil
 import com.vnlook.tvsongtao.utils.SSLConfig
 import com.vnlook.tvsongtao.utils.NetworkUtil
@@ -59,8 +58,9 @@ class StandeeAdsApplication : Application() {
         // Register or update device info
         registerDeviceInfo()
         
-        // Schedule the changelog checker job
-        scheduleChangelogJob()
+        // 🚀 INITIALIZE GLOBAL CHANGELOG TIMER
+        Log.i(TAG, "🔥 Starting global changelog timer...")
+        ChangelogTimerManager.initialize(this)
         
         Log.d(TAG, "StandeeAdsApplication initialized")
     }
@@ -94,27 +94,6 @@ class StandeeAdsApplication : Application() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "💥 Error setting up device registration: ${e.message}")
-            e.printStackTrace()
-        }
-    }
-    
-    /**
-     * Schedule the job to check for changelog updates
-     * For testing, we use both the JobScheduler and a Handler-based checker
-     */
-    private fun scheduleChangelogJob() {
-        try {
-            // Schedule the JobScheduler for every 15 minutes
-            try {
-                ChangelogSchedulerJob.schedule(this)
-                Log.d(TAG, "✅ Changelog scheduler job scheduled (every 15 minutes)")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error scheduling changelog job: ${e.message}")
-                e.printStackTrace()
-            }
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in scheduleChangelogJob: ${e.message}")
             e.printStackTrace()
         }
     }
