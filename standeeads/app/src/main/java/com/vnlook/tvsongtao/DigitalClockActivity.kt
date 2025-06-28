@@ -2,6 +2,7 @@ package com.vnlook.tvsongtao
 
 import android.app.ActivityOptions
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.Manifest
 import android.content.pm.PackageManager
@@ -49,9 +50,10 @@ import com.vnlook.tvsongtao.data.DataManager
 
 /**
  * DigitalClockActivity displays a full-screen clock with both digital and analog displays.
- * It checks for playlists and transitions to MainActivity if playlists are available.
+ * It checks for cached playlists in SharedPreferences and transitions to MainActivity 
+ * if valid videos are available.
  */
-class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
+class DigitalClockActivity : AppCompatActivity() {
 
     private val TAG = "DigitalClockActivity"
     
@@ -68,6 +70,7 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private lateinit var deviceInfoUtil: DeviceInfoUtil
     private lateinit var permissionUseCase: PermissionUseCase
     private lateinit var kioskModeManager: KioskModeManager
+    private lateinit var dataManager: DataManager
     
     // Video Download Manager
     private lateinit var videoDownloadManager: VideoDownloadManager
@@ -75,7 +78,7 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     // Coroutine scope with crash protection
     private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     
-    // Handler for time updates
+    // Handler for time updates and playlist checks
     private val handler = Handler(Looper.getMainLooper())
     
     // Date format
@@ -86,7 +89,7 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     private var isVideoDownloadInitialized = false
     private var isDeviceRegistered = false
     private var isFirstLoad = true
-    private var isInitializationStarted = false // NEW: Prevent multiple initialization calls
+    private var isInitializationStarted = false
     
     // Location permission launcher
     private val requestPermissionLauncher = registerForActivityResult(
@@ -95,20 +98,16 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         // Handle permission results
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
-            // Permissions granted, proceed with location operations
-            initializeLocationDependentComponents()
+            Log.d(TAG, "✅ All permissions granted")
         } else {
-            // Permissions denied, show a message and continue without location
-            Toast.makeText(this, "Location permission is required for better functionality", 
-                Toast.LENGTH_LONG).show()
-            initializeLocationDependentComponents()
+            Toast.makeText(this, "Some permissions were denied", Toast.LENGTH_LONG).show()
         }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        Log.d(TAG, "Digital clock activity onCreate started")
+        Log.d(TAG, "🕐 DigitalClockActivity onCreate started")
         
         // PROTECTION: Prevent multiple onCreate calls from triggering multiple initializations
         if (isInitializationStarted) {
@@ -116,56 +115,37 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
             return
         }
         
-        // ADDITIONAL PROTECTION: Wrap entire onCreate in try-catch
         try {
-        
-        // Set full screen
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
-        
-        // Keep screen on
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        
-        // Set content view first
-        setContentView(R.layout.digital_clock_screen)
-        Log.d(TAG, "Layout set successfully")
-        
-        // Initialize views immediately and ensure they're visible
-        try {
+            // Set full screen
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+            )
+            
+            // Keep screen on
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            
+            // Set content view first
+            setContentView(R.layout.digital_clock_screen)
+            Log.d(TAG, "Layout set successfully")
+            
+            // Initialize views immediately and ensure they're visible
             initializeViews()
             Log.d(TAG, "Views initialized successfully")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing views: ${e.message}")
-            e.printStackTrace()
-        }
-        
-        // Initialize components
-        try {
+            
+            // Initialize components
             initializeComponents()
             Log.d(TAG, "Components initialized successfully")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing components: ${e.message}")
-            e.printStackTrace()
-        }
-        
-        // Set up test button
-        setupTestButton()
-        
-        // Mark initialization as started
-        isInitializationStarted = true
-        
-        // Start the main initialization flow with a slight delay to ensure UI is rendered
-        handler.postDelayed({
-            try {
-                startInitializationFlow()
-            } catch (e: Exception) {
-                Log.e(TAG, "💥 Error in delayed initialization: ${e.message}")
-                e.printStackTrace()
-            }
-        }, 500) // Reduced delay but still allow UI to render
-        
+            
+            // Set up test button
+            setupTestButton()
+            
+            // Mark initialization as started
+            isInitializationStarted = true
+            
+            // Start the main initialization flow
+            startInitializationFlow()
+            
         } catch (e: Exception) {
             Log.e(TAG, "💥 CRITICAL: Error in onCreate: ${e.message}")
             e.printStackTrace()
@@ -215,6 +195,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         deviceRepository = DeviceRepositoryImpl(this)
         deviceInfoUtil = DeviceInfoUtil(this, deviceRepository)
         
+        // Initialize data manager
+        dataManager = DataManager(this)
+        
         // Initialize permission use case
         permissionUseCase = PermissionUseCase(this)
         
@@ -226,17 +209,8 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         try {
             val btnForceDelete = findViewById<Button>(R.id.btnForceDeleteVideos)
             btnForceDelete.setOnClickListener {
-                Log.d(TAG, "=== TEST BUTTON CLICKED - Test ===")
-                
-                // Initialize video download manager if needed
-                if (!::videoDownloadManager.isInitialized) {
-                    videoDownloadManager = VideoDownloadManager(this)
-                }
-                
-                // REMOVED: Force delete method no longer available
-                // videoDownloadManager.forceDeleteAllVideosNow()
-                
-                Toast.makeText(this, "🗑️ Test completed! Check logs for details.", Toast.LENGTH_LONG).show()
+                Log.d(TAG, "=== TEST BUTTON CLICKED ===")
+                Toast.makeText(this, "🕐 Clock test completed! Check logs for details.", Toast.LENGTH_LONG).show()
             }
             Log.d(TAG, "Test button setup completed")
         } catch (e: Exception) {
@@ -250,7 +224,7 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         
         // Check permissions immediately
         Log.d(TAG, "🔒 Checking permissions status...")
-        permissionUseCase.areAllPermissionsGranted() // This will log detailed status
+        permissionUseCase.areAllPermissionsGranted()
         
         if (permissionUseCase.checkAndRequestPermissions()) {
             Log.d(TAG, "✅ All permissions granted in DigitalClockActivity")
@@ -261,27 +235,8 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         // Enable full kiosk mode
         enableKioskMode()
         
-        // Check and request location permissions
-        checkLocationPermissions()
-        
-        // Check network status before proceeding with network-dependent operations
-        val hasNetwork = NetworkUtil.isNetworkAvailable(this)
-        Log.d(TAG, "📡 Network status: ${if (hasNetwork) "Available" else "Not available"}")
-        
-        if (hasNetwork) {
-            Log.d(TAG, "🌐 Network available - proceeding with full initialization")
-        // Register device info if needed
-        registerDeviceInfo()
-        
-            // Start checking for playlists
-            checkCompareAndDownloadPlaylists()
-        } else {
-            Log.d(TAG, "🚫 No network - skipping network-dependent operations")
-            Log.d(TAG, "⏰ App will stay on clock screen until network is available")
-            
-            // Still try to check for cached playlists without API calls
-            checkCompareAndDownloadPlaylists()
-        }
+        // Start checking for cached playlists periodically
+        startPlaylistCheck()
     }
     
     private fun startTimeUpdates() {
@@ -300,378 +255,156 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     }
     
     /**
-     * Register device information with the API
-     * Creates a new device if it doesn't exist, or updates an existing one
+     * Start periodic playlist checking every 30 seconds
      */
-    private fun checkLocationPermissions() {
-        val permissionsToRequest = mutableListOf<String>()
+    private fun startPlaylistCheck() {
+        Log.d(TAG, "🔄 Starting periodic playlist check...")
         
-        // Check which permissions we need to request
-        DeviceInfoUtil.REQUIRED_PERMISSIONS.forEach { permission ->
-            if (ContextCompat.checkSelfPermission(
-                    this,
-                    permission
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                permissionsToRequest.add(permission)
+        // Check immediately
+        checkCachedPlaylists()
+        
+        // Then check every 30 seconds
+        handler.post(object : Runnable {
+            override fun run() {
+                checkCachedPlaylists()
+                handler.postDelayed(this, 30000) // Check every 30 seconds
             }
-        }
-        
-        if (permissionsToRequest.isNotEmpty()) {
-            // Request missing permissions
-            requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
-        } else {
-            // All permissions already granted, proceed with location operations
-            initializeLocationDependentComponents()
-        }
+        })
     }
     
-    private fun initializeLocationDependentComponents() {
-        // PROTECTION: Prevent duplicate initialization
-        if (isLocationComponentsInitialized) {
-            Log.d(TAG, "🚫 Location components already initialized, skipping")
-            return
-        }
-        
-        Log.d(TAG, "🔄 Initializing location dependent components...")
-        isLocationComponentsInitialized = true
-        
-        // REMOVED: checkCompareAndDownloadPlaylists() - already called in startInitializationFlow
-        Log.d(TAG, "✅ Location dependent components initialized (checkCompareAndDownloadPlaylists already called)")
-        
-        // Also register device info which might use location
-        registerDeviceInfo()
-    }
-    
-    private fun registerDeviceInfo() {
-        // PROTECTION: Prevent duplicate device registration
-        if (isDeviceRegistered) {
-            Log.d(TAG, "🚫 Device already registered, skipping")
-            return
-        }
-        
-        Log.d(TAG, "Checking if device info needs to be registered")
-        
-        // Check network connectivity first
-        if (!NetworkUtil.isNetworkAvailable(this)) {
-            Log.d(TAG, "🚫 No network available, skipping device registration")
-            return
-        }
-        
-        Log.d(TAG, "📡 Network available, proceeding with device registration")
-        isDeviceRegistered = true
-        
-        // Run in a coroutine to avoid blocking the UI thread
+    /**
+     * Check for cached playlists in SharedPreferences and verify if videos exist
+     */
+    private fun checkCachedPlaylists() {
         coroutineScope.launch(Dispatchers.IO) {
             try {
-                val result = deviceInfoUtil.registerOrUpdateDevice()
-                withContext(Dispatchers.Main) {
-                    if (result != null) {
-                        Log.d(TAG, "✅ Device registration successful: $result")
+                Log.d(TAG, "🔍 Checking cached playlists...")
+                
+                // Get cached playlists from SharedPreferences
+                val cachedPlaylists = dataManager.getPlaylists()
+                
+                if (cachedPlaylists.isNotEmpty()) {
+                    Log.d(TAG, "✅ Found ${cachedPlaylists.size} cached playlists")
+                    
+                    // Check if we have valid videos for these playlists
+                    val hasValidVideos = checkIfValidVideosExist(cachedPlaylists)
+                    
+                    if (hasValidVideos) {
+                        Log.d(TAG, "🎬 Found valid videos, switching to MainActivity")
+                        withContext(Dispatchers.Main) {
+                            switchToMainActivity()
+                        }
                     } else {
-                        Log.e(TAG, "❌ Device registration failed")
-                        // Reset flag on failure so it can be retried later
-                        isDeviceRegistered = false
+                        Log.d(TAG, "📭 No valid videos found for cached playlists")
                     }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "💥 Error registering device: ${e.message}")
-                e.printStackTrace()
-                // Reset flag on error so it can be retried later
-                withContext(Dispatchers.Main) {
-                    isDeviceRegistered = false
-                }
-            }
-        }
-    }
-
-    private fun checkCompareAndDownloadPlaylists() {
-        // PROTECTION: Prevent duplicate video download initialization
-        if (isVideoDownloadInitialized) {
-            Log.d(TAG, "🚫 Video download already initialized, skipping")
-            return
-        }
-        
-        try {
-            Log.d(TAG, "🔄 Starting simple playlist check...")
-            isVideoDownloadInitialized = true
-            
-            // STEP 1: Check if we have local playlists first
-            val dataManager = DataManager(this)
-            val cachedPlaylists = dataManager.getPlaylists()
-            
-            if (cachedPlaylists.isNotEmpty()) {
-                Log.d(TAG, "✅ Found ${cachedPlaylists.size} cached playlists, checking for videos...")
-                
-                // Check if we have videos for these playlists
-                val hasVideos = checkIfVideosExist(cachedPlaylists)
-                
-                if (hasVideos) {
-                    Log.d(TAG, "🎬 Found local videos, switching to video screen immediately")
-                    switchToVideoScreen()
-                    return
                 } else {
-                    Log.d(TAG, "📭 No local videos found for cached playlists")
+                    Log.d(TAG, "📭 No cached playlists found")
                 }
-            } else {
-                Log.d(TAG, "📭 No cached playlists found")
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "💥 Error checking cached playlists: ${e.message}")
+                e.printStackTrace()
             }
-            
-            // STEP 2: Only call API on first load
-            if (isFirstLoad) {
-                Log.d(TAG, "🚀 First load - calling API to get playlists")
-                isFirstLoad = false
-                
-                // Check network first
-                if (!NetworkUtil.isNetworkAvailable(this)) {
-                    Log.d(TAG, "🚫 No network on first load, staying on clock screen")
-                    // No network and no cached videos - stay on clock screen
-                    return
-                }
-                
-                // Initialize video download manager for API call
-            if (!::videoDownloadManager.isInitialized) {
-                videoDownloadManager = VideoDownloadManager(this)
-                videoDownloadManager.setDownloadListener(this)
-                }
-                
-                // Call API once
-                videoDownloadManager.initializeVideoDownloadWithNetworkCheck(this)
-            } else {
-                Log.d(TAG, "⏰ Not first load, staying on clock screen (API will be called by scheduler)")
-                // Not first load and no cached videos - stay on clock screen
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in playlist check: ${e.message}")
-            e.printStackTrace()
-            // Reset flag on error so it can be retried
-            isVideoDownloadInitialized = false
         }
     }
     
-    private fun checkIfVideosExist(playlists: List<Playlist>): Boolean {
+    /**
+     * Check if a file is a video file based on MIME type and extension
+     */
+    private fun isVideoFile(file: File): Boolean {
+        try {
+            // First, try to get MIME type from the system
+            val uri = Uri.fromFile(file)
+            val mimeType = contentResolver.getType(uri)
+            
+            if (mimeType != null && mimeType.startsWith("video/")) {
+                return true
+            }
+            
+            // Fallback to extension-based check for common video formats
+            val fileName = file.name.lowercase()
+            val videoExtensions = listOf(
+                ".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", 
+                ".webm", ".m4v", ".3gp", ".ts", ".mpg", ".mpeg"
+            )
+            
+            return videoExtensions.any { fileName.endsWith(it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error checking if file is video: ${e.message}")
+            // Fallback to basic extension check
+            return file.name.lowercase().endsWith(".mp4")
+        }
+    }
+
+    /**
+     * Check if valid videos exist for the cached playlists
+     */
+    private fun checkIfValidVideosExist(playlists: List<Playlist>): Boolean {
         return try {
-            val moviesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "standeeads")
+            val moviesDir = File(getExternalFilesDir(Environment.DIRECTORY_MOVIES), "")
             if (!moviesDir.exists()) {
-                Log.d(TAG, "Movies directory does not exist")
+                Log.d(TAG, "📁 Movies directory does not exist")
                 return false
             }
             
             val videoFiles = moviesDir.listFiles { file -> 
-                file.isFile && file.name.endsWith(".mp4", ignoreCase = true)
+                file.isFile && isVideoFile(file)
             }
             
-            val hasVideos = videoFiles != null && videoFiles.isNotEmpty()
-            Log.d(TAG, "📁 Movies directory has ${videoFiles?.size ?: 0} video files")
+            if (videoFiles == null || videoFiles.isEmpty()) {
+                Log.d(TAG, "📁 No video files found in movies directory")
+                return false
+            }
             
-            hasVideos
+            Log.d(TAG, "📁 Found ${videoFiles.size} video files in movies directory")
+            
+            // Check if we have videos for at least one playlist
+            val allVideos = dataManager.getVideos()
+            var hasValidVideos = false
+            
+            for (playlist in playlists) {
+                val playlistVideos = allVideos.filter { video ->
+                    playlist.videoIds.contains(video.id)
+                }
+                
+//                val downloadedVideos = playlistVideos.filter { video ->
+//                    video.isDownloaded && !video.localPath.isNullOrEmpty() && File(video.localPath!!).exists()
+//                }
+                
+                if (playlistVideos.isNotEmpty()) {
+                    Log.d(TAG, "✅ Playlist ${playlist.id} has ${playlistVideos.size} valid videos")
+                    hasValidVideos = true
+                    break
+                }
+            }
+            
+            return hasValidVideos
+            
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking for videos: ${e.message}")
+            Log.e(TAG, "💥 Error checking for valid videos: ${e.message}")
+            e.printStackTrace()
             false
         }
     }
     
-    private fun switchToVideoScreen() {
-        Log.d(TAG, "🎬 Switching to video screen...")
-        startMainActivity()
-    }
-    
     /**
-     * Check for changelog updates in the background
-     * If there are changes, reload playlists
-     * CRASH-SAFE: Protected against all potential crashes
+     * Switch to MainActivity to play videos
      */
-    private fun checkForChangelogUpdates() {
-        try {
-            // PROTECTION: Check if activity is still valid
-            if (isFinishing || isDestroyed) {
-                Log.d(TAG, "⚠️ Activity invalid, skipping changelog check")
-                return
-            }
-            
-            // Check network connectivity first
-            if (!NetworkUtil.isNetworkAvailable(this)) {
-                Log.d(TAG, "🚫 No network available, skipping changelog check")
-                return
-            }
-            
-            // Use SupervisorJob coroutine scope for crash protection
-            coroutineScope.launch {
-                var hasChanges = false
-                try {
-                    Log.d(TAG, "🔍 Checking for changelog updates with network available")
-                    
-                    // Check if there are changes in the changelog with protection
-                    hasChanges = changelogUtil.checkChange()
-                    Log.d(TAG, "📊 Changelog check result: hasChanges=$hasChanges")
-                    
-                } catch (e: Exception) {
-                    Log.e(TAG, "💥 Error in changelog API call: ${e.message}")
-                    e.printStackTrace()
-                    // Continue with hasChanges = false (safe fallback)
-                }
-                
-                // Process result safely
-                try {
-                    if (hasChanges) {
-                        Log.d(TAG, "🔄 Changelog updates detected, reloading playlists")
-                        
-                        // Reload playlists from API with safety checks
-                        withContext(Dispatchers.Main) {
-                            try {
-                                // Check activity validity again
-                                if (isFinishing || isDestroyed) {
-                                    Log.d(TAG, "⚠️ Activity became invalid, skipping reload")
-                                    return@withContext
-                                }
-                                
-                                // Re-initialize video download manager to reload playlists
-                                if (::videoDownloadManager.isInitialized) {
-                                    try {
-                                        videoDownloadManager.cleanup()
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Error cleaning up video download manager: ${e.message}")
-                                    }
-                                }
-                                
-                                videoDownloadManager = VideoDownloadManager(this@DigitalClockActivity)
-                                videoDownloadManager.setDownloadListener(this@DigitalClockActivity)
-                                videoDownloadManager.initializeVideoDownloadWithNetworkCheck(this@DigitalClockActivity)
-                                
-                                Log.d(TAG, "✅ Playlists reloaded due to changelog updates with network check")
-                            } catch (e: Exception) {
-                                Log.e(TAG, "💥 Error reloading playlists: ${e.message}")
-                                e.printStackTrace()
-                            }
-                        }
-                    } else {
-                        Log.d(TAG, "✅ No changelog updates detected")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "💥 Error processing changelog result: ${e.message}")
-                    e.printStackTrace()
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "💥 CRITICAL: Error in checkForChangelogUpdates outer try-catch: ${e.message}")
-            e.printStackTrace()
-        }
-    }
-    
-//    private fun checkForPlaylists() {
-//        try {
-//            // Initialize video download manager if needed
-//            if (!::videoDownloadManager.isInitialized) {
-//                videoDownloadManager = VideoDownloadManager(this)
-//                videoDownloadManager.setDownloadListener(this)
-//                videoDownloadManager.initializeVideoDownload(this)
-//            }
-//
-//            // Check if there are any playlists
-//            val playlists = dataUseCase.getPlaylists()
-//
-//            if (playlists.isNotEmpty()) {
-//                // Use PlaylistScheduler to check if there's a valid playlist for the current time
-//                val currentPlaylist = playlistScheduler.getCurrentPlaylist(playlists)
-//
-//                if (currentPlaylist != null) {
-//                    Log.d(TAG, "Found valid playlist for current time: ${currentPlaylist.id}, starting video download")
-//                    // Start download process
-//                    videoDownloadManager.initializeVideoDownload(this)
-//                } else {
-//                    Log.d(TAG, "No playlist scheduled for current time, staying on clock screen")
-//                    // No playlist scheduled for current time, stay on the clock screen
-//
-//                    // Schedule another check in 1 minute
-//                    handler.postDelayed({
-//                        checkForPlaylists()
-//                    }, 60000) // Check again in 1 minute
-//                }
-//            } else {
-//                Log.d(TAG, "No playlists found, staying on clock screen")
-//                // No playlists, just stay on the clock screen
-//            }
-//        } catch (e: Exception) {
-//            Log.e(TAG, "Error checking for playlists: ${e.message}")
-//        }
-//    }
-
-//    override fun onProgressUpdate(completedDownloads: Int, totalDownloads: Int, progressPercent: Int) {
-//        // We don't show download progress in this screen
-//        Log.d(TAG, "Download progress: $completedDownloads/$totalDownloads - $progressPercent%")
-//    }
-    override fun onProgressUpdate(completed: Int, total: Int, progressPercent: Int) {
-        Log.d(TAG, "Download progress: $completed/$total - $progressPercent%")
-    }
-    
-    override fun onAllDownloadsCompleted() {
-        Log.d(TAG, "All downloads completed")
+    private fun switchToMainActivity() {
+        Log.d(TAG, "🎬 Switching to MainActivity...")
         
-        // Use coroutines to get playlists
-        coroutineScope.launch {
-            try {
-                // Check if there are any playlists to play
-                val playlists = dataUseCase.getPlaylists()
-                
-                withContext(Dispatchers.Main) {
-                    if (playlists.isNotEmpty()) {
-                        // Use PlaylistScheduler to check if there's a valid playlist for the current time
-                        val currentPlaylist = playlistScheduler.getCurrentPlaylist(playlists)
-                        
-                        if (currentPlaylist != null) {
-                            Log.d(TAG, "Found valid playlist for current time: ${currentPlaylist.id}, transitioning to video playback")
-                            // Wait a moment before starting MainActivity
-                            handler.postDelayed({
-                                startMainActivity()
-                            }, 1000)
-                        } else {
-                            Log.d(TAG, "No playlist scheduled for current time, staying on digital clock screen")
-                            // No playlist scheduled for current time, stay on the clock screen
-                        }
-                    } else {
-                        Log.d(TAG, "No playlists found, staying on digital clock screen")
-                        // No playlists to play, stay on the clock screen
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error getting playlists: ${e.message}")
-            }
-        }
-    }
-    
-    override fun onVideoReady(playlists: List<Playlist>) {
-        Log.d(TAG, "onVideoReady called with ${playlists.size} playlists")
-        runOnUiThread {
-            if (playlists.isNotEmpty()) {
-                Log.d(TAG, "Videos ready with playlists available, starting MainActivity immediately")
-                // In offline mode or when videos are ready, always play them
-                // Don't check for time scheduling in offline mode
-                startMainActivity()
-            } else {
-                Log.d(TAG, "No playlists available in onVideoReady, staying on digital clock screen")
-                // No playlists to play, stay on the clock screen
-            }
-        }
-    }
-    
-    private fun startMainActivity() {
         val intent = Intent(this, MainActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         
-        // Use ActivityOptions for a more modern approach to transitions
+        // Use ActivityOptions for smooth transition
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            // Create ActivityOptions with custom animations
             val options = ActivityOptions.makeCustomAnimation(
                 this,
                 R.anim.fade_in,
                 R.anim.fade_out
             )
-            
-            // Start activity with animation options
             startActivity(intent, options.toBundle())
         } else {
-            // Fallback for older devices
             startActivity(intent)
             overridePendingTransition(R.anim.fade_in, R.anim.fade_out)
         }
@@ -683,15 +416,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         
         if (::permissionUseCase.isInitialized && permissionUseCase.handlePermissionResult(requestCode, permissions, grantResults)) {
-            Log.d(TAG, "Permission granted in DigitalClockActivity")
-            // Permissions granted, continue with location dependent components only if not already initialized
-            if (!isLocationComponentsInitialized) {
-                initializeLocationDependentComponents()
-            } else {
-                Log.d(TAG, "🚫 Location components already initialized, skipping duplicate call")
-            }
+            Log.d(TAG, "✅ Permission granted in DigitalClockActivity")
         } else {
-            Log.d(TAG, "Permission denied in DigitalClockActivity")
+            Log.d(TAG, "❌ Permission denied in DigitalClockActivity")
         }
     }
     
@@ -700,7 +427,6 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
      */
     private fun enableKioskMode() {
         try {
-            // Use the enhanced kiosk mode that works without Device Owner permissions
             kioskModeManager.enableFullKioskMode(this)
         } catch (e: Exception) {
             Log.e(TAG, "Error enabling kiosk mode: ${e.message}")
@@ -716,10 +442,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     }
     
     /**
-     * Chặn các phím vật lý như Back, Home, Recent Apps
+     * Block physical keys like Back, Home, Recent Apps
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        // Chặn các phím điều hướng khi chế độ kiosk được bật
         if (KioskModeManager.KIOSK_MODE_ENABLED) {
             when (keyCode) {
                 KeyEvent.KEYCODE_BACK,
@@ -727,7 +452,7 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
                 KeyEvent.KEYCODE_MENU,
                 KeyEvent.KEYCODE_APP_SWITCH,
                 KeyEvent.KEYCODE_POWER -> {
-                    return true // Chặn phím
+                    return true // Block key
                 }
             }
         }
@@ -735,10 +460,9 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
     }
     
     /**
-     * Chặn nút Back
+     * Block Back button
      */
     override fun onBackPressed() {
-        // Không làm gì khi nút Back được nhấn trong chế độ kiosk
         if (KioskModeManager.KIOSK_MODE_ENABLED) {
             return
         }
@@ -750,46 +474,20 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
             Log.d(TAG, "🔄 DigitalClockActivity onDestroy started")
             
             // Cancel coroutine scope first to stop any ongoing operations
-            try {
-                coroutineScope.cancel()
-                Log.d(TAG, "✅ Coroutine scope cancelled")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error cancelling coroutine scope: ${e.message}")
-            }
+            coroutineScope.cancel()
+            Log.d(TAG, "✅ Coroutine scope cancelled")
             
             // Remove any pending handlers
-            try {
-                handler.removeCallbacksAndMessages(null)
-                Log.d(TAG, "✅ Handler callbacks removed")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error removing handler callbacks: ${e.message}")
-            }
+            handler.removeCallbacksAndMessages(null)
+            Log.d(TAG, "✅ Handler callbacks removed")
             
-            // Reset all protection flags to allow fresh initialization if activity is recreated
-            isLocationComponentsInitialized = false
-            isVideoDownloadInitialized = false
-            isDeviceRegistered = false
+            // Reset initialization flag
             isInitializationStarted = false
-            // Keep isFirstLoad as is - it should persist across activity recreations
-            
-            // Cleanup video download manager
-            try {
-                if (::videoDownloadManager.isInitialized) {
-                    videoDownloadManager.cleanup()
-                    Log.d(TAG, "✅ Video download manager cleaned up")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error cleaning up video download manager: ${e.message}")
-            }
             
             // Disable kiosk mode when activity is destroyed
-            try {
-                if (::kioskModeManager.isInitialized) {
-                    kioskModeManager.stopLockTask(this)
-                    Log.d(TAG, "✅ Kiosk mode disabled")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error disabling kiosk mode: ${e.message}")
+            if (::kioskModeManager.isInitialized) {
+                kioskModeManager.stopLockTask(this)
+                Log.d(TAG, "✅ Kiosk mode disabled")
             }
             
             Log.d(TAG, "✅ DigitalClockActivity onDestroy completed successfully")
@@ -798,12 +496,7 @@ class DigitalClockActivity : AppCompatActivity(), VideoDownloadManagerListener {
             Log.e(TAG, "💥 CRITICAL: Error in onDestroy: ${e.message}")
             e.printStackTrace()
         } finally {
-            // Always call super.onDestroy() even if there are errors
-            try {
-                super.onDestroy()
-            } catch (e: Exception) {
-                Log.e(TAG, "💥 Error calling super.onDestroy(): ${e.message}")
-            }
+            super.onDestroy()
         }
     }
 }

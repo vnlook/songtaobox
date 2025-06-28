@@ -501,6 +501,109 @@ class VideoDownloadManager(private val context: Context) {
     }
     
     /**
+     * Download a single video synchronously (for background changelog updates)
+     * Returns true if download was successful, false otherwise
+     */
+    suspend fun downloadVideoSynchronously(video: Video): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                if (video.url.isNullOrEmpty()) {
+                    Log.w(TAG, "Video ${video.id} has no URL, skipping")
+                    return@withContext false
+                }
+                
+                // Check network connectivity before download
+                if (!NetworkUtil.isNetworkAvailable(context)) {
+                    Log.w(TAG, "No network available for downloading video ${video.id}")
+                    return@withContext false
+                }
+                
+                Log.d(TAG, "🎬 Synchronously downloading video: ${video.id} from ${video.url}")
+                
+                // Extract filename from URL
+                val fileName = extractFilenameFromUrl(video.url)
+                
+                // Get movies directory
+                val moviesDir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "")
+                if (!moviesDir.exists()) {
+                    moviesDir.mkdirs()
+                }
+                
+                val localFile = File(moviesDir, fileName)
+                
+                // Skip if file already exists but update download status
+                if (localFile.exists()) {
+                    Log.d(TAG, "Video ${video.id} already exists: ${localFile.absolutePath}")
+                    
+                    // Update download status for existing file
+                    val dataManager = DataManager(context)
+                    dataManager.updateVideoDownloadStatus(video.url, true, localFile.absolutePath)
+                    
+                    return@withContext true
+                }
+                
+                // Download the video file with proper headers
+                val url = URL(video.url)
+                val connection = url.openConnection() as HttpURLConnection
+                
+                // Configure connection
+                connection.connectTimeout = 30000
+                connection.readTimeout = 60000
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "StandeeAds/1.0 (Android)")
+                connection.setRequestProperty("Accept", "*/*")
+                connection.setRequestProperty("Connection", "keep-alive")
+                
+                val responseCode = connection.responseCode
+                Log.d(TAG, "📡 HTTP Response: $responseCode for video ${video.id}")
+                
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val contentLength = connection.contentLength
+                    Log.d(TAG, "📦 Content length: $contentLength bytes for video ${video.id}")
+                    
+                    connection.inputStream.use { input ->
+                        FileOutputStream(localFile).use { output ->
+                            val buffer = ByteArray(8192)
+                            var bytesRead: Int
+                            var totalBytes = 0
+                            
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                                totalBytes += bytesRead
+                            }
+                            
+                            Log.d(TAG, "📥 Downloaded $totalBytes bytes for video ${video.id}")
+                        }
+                    }
+                    
+                    // Verify file was created successfully
+                    if (localFile.exists() && localFile.length() > 0) {
+                        Log.d(TAG, "✅ Successfully downloaded video ${video.id} to ${localFile.absolutePath} (${localFile.length()} bytes)")
+                        
+                        // Update download status in cache
+                        val dataManager = DataManager(context)
+                        dataManager.updateVideoDownloadStatus(video.url, true, localFile.absolutePath)
+                        
+                        return@withContext true
+                    } else {
+                        Log.e(TAG, "❌ Downloaded file is empty or doesn't exist for video ${video.id}")
+                        return@withContext false
+                    }
+                    
+                } else {
+                    Log.e(TAG, "❌ Failed to download video ${video.id}: HTTP $responseCode")
+                    return@withContext false
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Error downloading video ${video.id}: ${e.message}")
+                e.printStackTrace()
+                return@withContext false
+            }
+        }
+    }
+    
+    /**
      * Cleanup resources
      */
     fun cleanup() {
