@@ -67,35 +67,21 @@ class PlaylistRepositoryImpl(private val context: Context) : PlaylistRepository 
         
         Log.d(TAG, "✅ API SUCCESS (status 200) - Processing response...")
         
-        // Parse the API response - IMPORTANT: Get both playlists AND videos
-        val (playlists, videos) = VNLApiResponseParser.parseApiResponse(apiResponse)
-        Log.d(TAG, "Successfully retrieved ${playlists.size} playlists and ${videos.size} videos from API")
-        
-        // Save the API response to file for offline use
-        saveApiResponseToFile(apiResponse)
-        
         // Check if device is in portrait mode
         val isPortrait = context.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
         Log.d(TAG, "Device orientation is ${if (isPortrait) "portrait" else "landscape"}")
         val deviceRepository = DeviceRepositoryImpl(context)
         val deviceInfo = deviceRepository.getDeviceInfo()
         
-        // Filter playlists based on device orientation and portrait field
-        val filteredPlaylists = playlists.filter { 
-            it.deviceId == deviceInfo?.deviceId && 
-            it.deviceName == deviceInfo?.deviceName && 
-            it.deviceName != null 
-        }
+        // OPTIMIZED: Parse and filter API response in one step to avoid processing unnecessary data
+        val (filteredPlaylists, filteredVideos) = VNLApiResponseParser.parseApiResponseWithDeviceFilter(apiResponse, deviceInfo)
+        Log.d(TAG, "✅ OPTIMIZED: Parsed and filtered ${filteredPlaylists.size} playlists and ${filteredVideos.size} videos in one step")
         
-        Log.d(TAG, "Filtered playlists based on device info: ${filteredPlaylists.size} of ${playlists.size}")
-        
-        // Filter videos to only include those in filtered playlists
-        val filteredVideoIds = filteredPlaylists.flatMap { it.videoIds }.toSet()
-        val filteredVideos = videos.filter { it.id in filteredVideoIds }
-        Log.d(TAG, "Filtered videos based on device playlists: ${filteredVideos.size} of ${videos.size}")
+        // Save the API response to file for offline use
+        saveApiResponseToFile(apiResponse)
         
         // IMPORTANT: Only update cache when API returns status 200 (success)
-        Log.d(TAG, "💾 API SUCCESS - Updating cache with new playlists and videos")
+        Log.d(TAG, "💾 API SUCCESS - Updating cache with filtered playlists and videos")
         dataManager.savePlaylists(filteredPlaylists)
         
         // CRITICAL FIX: Save videos to cache using mergeVideos for download status preservation

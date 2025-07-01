@@ -8,6 +8,7 @@ import com.google.gson.reflect.TypeToken
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.model.Video
 import com.vnlook.tvsongtao.utils.ApiLogger
+import com.vnlook.tvsongtao.model.DeviceInfo
 import org.json.JSONObject
 
 /**
@@ -99,12 +100,14 @@ object VNLApiResponseParser {
                         
                         // Create video URL by combining baseUrl and fileName
                         val videoUrl = "$baseUrl/$fileName"
+                        var order = asset.order ?: 1
                         
                         Log.d(TAG, "Found video: ID=${videoId}, name=${videoName}, url=${videoUrl}")
                         
                         Video(
                             id = "$assetId",
                             name = videoName,
+                            order = order,
                             url = videoUrl,
                             isDownloaded = false
                         )
@@ -151,6 +154,134 @@ object VNLApiResponseParser {
     }
     
     /**
+     * OPTIMIZED: Parse API response JSON string into playlists and videos with device filtering
+     * This method filters playlists during parsing to avoid processing unnecessary data
+     * 
+     * @param jsonString JSON string from API response
+     * @param deviceInfo Device info to filter playlists by
+     * @return Pair of filtered playlists and videos lists
+     */
+    fun parseApiResponseWithDeviceFilter(jsonString: String, deviceInfo: DeviceInfo?): Pair<List<Playlist>, List<Video>> {
+        Log.d(TAG, "Parsing VNL API response JSON with device filter")
+        
+        if (deviceInfo == null) {
+            Log.w(TAG, "DeviceInfo is null, falling back to regular parsing")
+            return parseApiResponse(jsonString)
+        }
+        
+        Log.d(TAG, "Filtering for device: ID=${deviceInfo.deviceId}, Name=${deviceInfo.deviceName}")
+        
+        try {
+            // Validate JSON structure first
+            try {
+                JSONObject(jsonString)
+                Log.d(TAG, "JSON structure validation passed")
+            } catch (e: Exception) {
+                Log.e(TAG, "Invalid JSON structure: ${e.message}")
+                return Pair(emptyList(), emptyList())
+            }
+            
+            val type = object : TypeToken<VNLApiResponse>() {}.type
+            val apiResponse: VNLApiResponse
+            
+            try {
+                apiResponse = gson.fromJson<VNLApiResponse>(jsonString, type)
+                Log.d(TAG, "Successfully parsed API response with ${apiResponse.data.size} playlists")
+            } catch (e: JsonSyntaxException) {
+                Log.e(TAG, "Failed to parse API response: ${e.message}")
+                return Pair(emptyList(), emptyList())
+            }
+            
+            val videos = mutableListOf<Video>()
+            val playlists = mutableListOf<Playlist>()
+            
+            // Filter playlists during parsing - OPTIMIZATION
+            val filteredPlaylistData = apiResponse.data.filter { playlistData ->
+                val matchesDevice = playlistData.device?.deviceId == deviceInfo.deviceId && 
+                                   playlistData.device?.deviceName == deviceInfo.deviceName &&
+                                   playlistData.device?.deviceName != null
+                
+                if (matchesDevice) {
+                    Log.d(TAG, "✅ Processing playlist: ID=${playlistData.id}, matches device filter")
+                } else {
+                    Log.d(TAG, "⏭️ Skipping playlist: ID=${playlistData.id}, doesn't match device filter")
+                }
+                
+                matchesDevice
+            }
+            
+            Log.d(TAG, "Filtered ${filteredPlaylistData.size} of ${apiResponse.data.size} playlists for device")
+            
+            filteredPlaylistData.forEach { playlistData ->
+                // Extract videos from playlist assets
+                val playlistVideos = playlistData.assets.mapNotNull { asset ->
+                    asset.mediaAssetsId?.let { mediaAsset ->
+                        val videoId = mediaAsset.file?.id
+                        val assetId = mediaAsset.id
+                        if (videoId == null) {
+                            Log.w(TAG, "Skipping video with null ID in playlist ${playlistData.id}")
+                            return@let null
+                        }
+                        
+                        val videoName = mediaAsset.title ?: "Untitled Video"
+                        val baseUrl = mediaAsset.fileUrl ?: "https://ledgiaodich.vienthongtayninh.vn:3030/assets"
+                        val fileName = mediaAsset.file.filenameDisk
+                        if (fileName == null) {
+                            Log.w(TAG, "Skipping video ${videoId} with null filename in playlist ${playlistData.id}")
+                            return@let null
+                        }
+                        
+                        // Create video URL by combining baseUrl and fileName
+                        val videoUrl = "$baseUrl/$fileName"
+                        var order = asset.order ?: 1
+                        
+                        Log.d(TAG, "Found video: ID=${videoId}, name=${videoName}, url=${videoUrl}")
+                        
+                        Video(
+                            id = "$assetId",
+                            name = videoName,
+                            order = order,
+                            url = videoUrl,
+                            isDownloaded = false
+                        )
+                    }
+                }
+                
+                // Add videos to the main list
+                videos.addAll(playlistVideos)
+                
+                // Create playlist with video IDs
+                val playlist = Playlist(
+                    id = playlistData.id.toString(),
+                    startTime = playlistData.beginTime?.substring(0, 5) ?: "00:00", // Extract HH:MM from HH:MM:SS
+                    endTime = playlistData.endTime?.substring(0, 5) ?: "23:59",
+                    portrait = playlistData.portrait,
+                    deviceId = playlistData.device?.deviceId,
+                    deviceName = playlistData.device?.deviceName,
+                    videoIds = playlistVideos.map { it.id }
+                )
+                
+                Log.d(TAG, "Created playlist: ID=${playlist.id}, startTime=${playlist.startTime}, endTime=${playlist.endTime}, videoCount=${playlist.videoIds.size}")
+                playlists.add(playlist)
+            }
+            
+            Log.d(TAG, "✅ OPTIMIZED: Parsed ${playlists.size} playlists and ${videos.size} videos (filtered during parsing)")
+            
+            // Log detailed summary of parsed data
+            val playlistSummary = playlists.joinToString("\n") { 
+                "Playlist ${it.id}: ${it.startTime}-${it.endTime}, ${it.videoIds.size} videos" 
+            }
+            Log.d(TAG, "Filtered playlists summary:\n$playlistSummary")
+            
+            return Pair(playlists, videos)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing API response with device filter: ${e.message}")
+            e.printStackTrace()
+            return Pair(emptyList(), emptyList())
+        }
+    }
+    
+    /**
      * Data classes for parsing API response
      */
     data class VNLApiResponse(
@@ -170,7 +301,8 @@ object VNLApiResponseParser {
     )
     
     data class VNLAsset(
-        @SerializedName("media_assets_id") val mediaAssetsId: VNLMediaAsset? = null
+        @SerializedName("media_assets_id") val mediaAssetsId: VNLMediaAsset? = null,
+        @SerializedName("order") val order: Int? = null
     )
 
     data class VNLDevice(
