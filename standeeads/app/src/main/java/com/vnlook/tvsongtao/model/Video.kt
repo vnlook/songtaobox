@@ -7,6 +7,8 @@ data class Video(
     @SerializedName("name") val name: String,
     @SerializedName("order") val order: Int,
     @SerializedName("url") val url: String,
+    @SerializedName("startTime") val startTime: Int? = null,
+    @SerializedName("duration") val duration: Int? = null,
     @SerializedName("isDownloaded") var isDownloaded: Boolean = false,
     @SerializedName("localPath") var localPath: String? = null
 )

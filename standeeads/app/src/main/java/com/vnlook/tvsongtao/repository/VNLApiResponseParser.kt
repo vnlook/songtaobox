@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
+import com.vnlook.tvsongtao.config.ApiConfig
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.model.Video
 import com.vnlook.tvsongtao.utils.ApiLogger
@@ -61,7 +62,7 @@ object VNLApiResponseParser {
             }
             
             // Log the API response format
-            Log.d(TAG, "API Response format matches curl command: curl --location --request GET 'https://ledgiaodich.vienthongtayninh.vn:3030/items/media_playlist?fields=id,title,active,order,beginTime,endTime,assets.media_assets_id.title,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download'")
+            Log.d(TAG, "API Response format matches curl command: curl --location --request GET '${ApiConfig.getMediaPlaylistUrlWithFields()}'")
             
             val type = object : TypeToken<VNLApiResponse>() {}.type
             val apiResponse: VNLApiResponse
@@ -91,7 +92,7 @@ object VNLApiResponseParser {
                         }
                         
                         val videoName = mediaAsset.title ?: "Untitled Video"
-                        val baseUrl = mediaAsset.fileUrl ?: "https://ledgiaodich.vienthongtayninh.vn:3030/assets"
+                        val baseUrl = mediaAsset.fileUrl ?: ApiConfig.ASSETS_BASE_URL
                         val fileName = mediaAsset.file.filenameDisk
                         if (fileName == null) {
                             Log.w(TAG, "Skipping video ${videoId} with null filename in playlist ${playlistData.id}")
@@ -102,13 +103,15 @@ object VNLApiResponseParser {
                         val videoUrl = "$baseUrl/$fileName"
                         var order = asset.order ?: 1
                         
-                        Log.d(TAG, "Found video: ID=${videoId}, name=${videoName}, url=${videoUrl}")
+                        Log.d(TAG, "Found video: ID=${videoId}, name=${videoName}, url=${videoUrl}, startTime=${mediaAsset.startTime}, duration=${mediaAsset.duration}")
                         
                         Video(
                             id = "$assetId",
                             name = videoName,
                             order = order,
                             url = videoUrl,
+                            startTime = mediaAsset.startTime,
+                            duration = mediaAsset.duration,
                             isDownloaded = false
                         )
                     }
@@ -224,7 +227,7 @@ object VNLApiResponseParser {
                         }
                         
                         val videoName = mediaAsset.title ?: "Untitled Video"
-                        val baseUrl = mediaAsset.fileUrl ?: "https://ledgiaodich.vienthongtayninh.vn:3030/assets"
+                        val baseUrl = mediaAsset.fileUrl ?: ApiConfig.ASSETS_BASE_URL
                         val fileName = mediaAsset.file.filenameDisk
                         if (fileName == null) {
                             Log.w(TAG, "Skipping video ${videoId} with null filename in playlist ${playlistData.id}")
@@ -235,13 +238,15 @@ object VNLApiResponseParser {
                         val videoUrl = "$baseUrl/$fileName"
                         var order = asset.order ?: 1
                         
-                        Log.d(TAG, "Found video: ID=${videoId}, name=${videoName}, url=${videoUrl}")
+                        Log.d(TAG, "Found video: ID=${videoId}, name=${videoName}, url=${videoUrl}, startTime=${mediaAsset.startTime}, duration=${mediaAsset.duration}")
                         
                         Video(
                             id = "$assetId",
                             name = videoName,
                             order = order,
                             url = videoUrl,
+                            startTime = mediaAsset.startTime,
+                            duration = mediaAsset.duration,
                             isDownloaded = false
                         )
                     }
@@ -315,7 +320,9 @@ object VNLApiResponseParser {
         @SerializedName("title") val title: String? = null,
         @SerializedName("fileUrl") val fileUrl: String? = null,
         @SerializedName("file") val file: VNLFile? = null,
-        @SerializedName("type") val type: String? = null
+        @SerializedName("type") val type: String? = null,
+        @SerializedName("startTime") val startTime: Int? = null,
+        @SerializedName("duration") val duration: Int? = null
     )
     
     data class VNLFile(

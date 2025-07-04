@@ -1,6 +1,7 @@
 package com.vnlook.tvsongtao.repository
 
 import android.util.Log
+import com.vnlook.tvsongtao.config.ApiConfig
 import com.vnlook.tvsongtao.utils.ApiLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -15,9 +16,6 @@ import java.net.URL
 object VNLApiClient {
     private const val TAG = "VNLApiClient"
     
-    private const val API_URL = "https://ledgiaodich.vienthongtayninh.vn:3030/items/media_playlist"
-    private const val API_FIELDS = "id,title,active,order,beginTime,endTime,portrait,device.device_id,device.device_name,assets.media_assets_id.title,assets.media_assets_id.id,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download,assets.order"
-    
     /**
      * Make a GET request to the VNL API
      * 
@@ -25,15 +23,15 @@ object VNLApiClient {
      */
     suspend fun getPlaylists(): String? = withContext(Dispatchers.IO) {
         try {
-            val urlString = "$API_URL?fields=$API_FIELDS"
+            val urlString = ApiConfig.getMediaPlaylistUrlWithFields()
             val url = URL(urlString)
             
             // Log the API request
             val headers = mapOf(
-                "User-Agent" to "Apidog/1.0.0 (https://apidog.com)",
-                "Accept" to "*/*",
-                "Host" to "ledgiaodich.vienthongtayninh.vn:3030",
-                "Connection" to "keep-alive"
+                "User-Agent" to ApiConfig.Headers.USER_AGENT,
+                "Accept" to ApiConfig.Headers.ACCEPT,
+                "Host" to ApiConfig.Headers.HOST,
+                "Connection" to ApiConfig.Headers.CONNECTION
             )
             ApiLogger.logRequest(urlString, "GET", headers)
             
@@ -42,14 +40,14 @@ object VNLApiClient {
             connection.requestMethod = "GET"
             
             // Set headers
-            connection.setRequestProperty("User-Agent", "Apidog/1.0.0 (https://apidog.com)")
-            connection.setRequestProperty("Accept", "*/*")
-            connection.setRequestProperty("Host", "ledgiaodich.vienthongtayninh.vn:3030")
-            connection.setRequestProperty("Connection", "keep-alive")
+            connection.setRequestProperty("User-Agent", ApiConfig.Headers.USER_AGENT)
+            connection.setRequestProperty("Accept", ApiConfig.Headers.ACCEPT)
+            connection.setRequestProperty("Host", ApiConfig.Headers.HOST)
+            connection.setRequestProperty("Connection", ApiConfig.Headers.CONNECTION)
             
             // Set timeouts (increased for better reliability)
-            connection.connectTimeout = 30000 // 30 seconds
-            connection.readTimeout = 60000    // 60 seconds
+            connection.connectTimeout = ApiConfig.Timeouts.CONNECT_TIMEOUT
+            connection.readTimeout = ApiConfig.Timeouts.READ_TIMEOUT
             
             // Get response
             val responseCode = connection.responseCode

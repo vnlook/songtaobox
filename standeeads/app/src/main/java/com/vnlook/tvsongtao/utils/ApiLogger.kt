@@ -1,6 +1,7 @@
 package com.vnlook.tvsongtao.utils
 
 import android.util.Log
+import com.vnlook.tvsongtao.config.ApiConfig
 
 /**
  * Utility class for logging API requests and responses
@@ -34,13 +35,13 @@ object ApiLogger {
      * Log VNL API request based on the curl command
      */
     fun logVNLApiRequest() {
-        val url = "https://ledgiaodich.vienthongtayninh.vn:3030/items/media_playlist?fields=id,title,active,order,beginTime,endTime,assets.media_assets_id.title,assets.media_assets_id.fileUrl,assets.media_assets_id.file.filename_disk,assets.media_assets_id.file.id,media_assets_id.type,assets.media_assets_id.file.filename_download"
+        val url = ApiConfig.getMediaPlaylistUrlWithFields()
         val method = "GET"
         val headers = mapOf(
-            "User-Agent" to "Apidog/1.0.0 (https://apidog.com)",
-            "Accept" to "*/*",
-            "Host" to "ledgiaodich.vienthongtayninh.vn:3030",
-            "Connection" to "keep-alive"
+            "User-Agent" to ApiConfig.Headers.USER_AGENT,
+            "Accept" to ApiConfig.Headers.ACCEPT,
+            "Host" to ApiConfig.Headers.HOST,
+            "Connection" to ApiConfig.Headers.CONNECTION
         )
         
         logRequest(url, method, headers)

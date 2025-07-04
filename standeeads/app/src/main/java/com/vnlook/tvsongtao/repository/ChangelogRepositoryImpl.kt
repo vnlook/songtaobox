@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.vnlook.tvsongtao.config.ApiConfig
 import com.vnlook.tvsongtao.model.Changelog
 import com.vnlook.tvsongtao.utils.ApiLogger
 import kotlinx.coroutines.Dispatchers
@@ -21,9 +22,6 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
     private val TAG = "ChangelogRepository"
     private val gson = Gson()
     
-    private val API_URL = "https://ledgiaodich.vienthongtayninh.vn:3030/items/changelog"
-    private val API_PARAMS = "limit=1&sort=-date_created"
-    
     /**
      * Get latest changelog entry from VNL API
      * @return Latest changelog entry or null if API call failed
@@ -31,15 +29,15 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
     override suspend fun getLatestChangelog(): Changelog? = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
         try {
-            val urlString = "$API_URL?$API_PARAMS"
+            val urlString = "${ApiConfig.CHANGELOG_URL}?limit=1&sort=-date_created"
             val url = URL(urlString)
             
             // Log the API request
             val headers = mapOf(
-                "User-Agent" to "Apidog/1.0.0 (https://apidog.com)",
+                "User-Agent" to ApiConfig.Headers.USER_AGENT,
                 "Accept" to "application/json",
-                "Host" to "ledgiaodich.vienthongtayninh.vn:3030",
-                "Connection" to "keep-alive"
+                "Host" to ApiConfig.Headers.HOST,
+                "Connection" to ApiConfig.Headers.CONNECTION
             )
             ApiLogger.logRequest(urlString, "GET", headers)
             
@@ -48,14 +46,14 @@ class ChangelogRepositoryImpl(private val context: Context) : ChangelogRepositor
             connection.requestMethod = "GET"
             
             // Set headers
-            connection.setRequestProperty("User-Agent", "Apidog/1.0.0 (https://apidog.com)")
+            connection.setRequestProperty("User-Agent", ApiConfig.Headers.USER_AGENT)
             connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("Host", "ledgiaodich.vienthongtayninh.vn:3030")
-            connection.setRequestProperty("Connection", "keep-alive")
+            connection.setRequestProperty("Host", ApiConfig.Headers.HOST)
+            connection.setRequestProperty("Connection", ApiConfig.Headers.CONNECTION)
             
             // Set timeouts
-            connection.connectTimeout = 15000
-            connection.readTimeout = 15000
+            connection.connectTimeout = ApiConfig.Timeouts.CONNECT_TIMEOUT
+            connection.readTimeout = ApiConfig.Timeouts.READ_TIMEOUT
             
             // Get response
             val responseCode = connection.responseCode

@@ -14,6 +14,7 @@ import android.util.Log
 import com.vnlook.tvsongtao.data.DataManager
 import com.vnlook.tvsongtao.model.Playlist
 import com.vnlook.tvsongtao.model.Video
+import com.vnlook.tvsongtao.config.ApiConfig
 import com.vnlook.tvsongtao.repository.DeviceRepositoryImpl
 import com.vnlook.tvsongtao.repository.PlaylistRepository
 import com.vnlook.tvsongtao.repository.PlaylistRepositoryImpl
@@ -325,15 +326,36 @@ class VideoDownloadManager(private val context: Context) {
                 Log.d(TAG, "🎬 Downloading video: ${video.id} from ${video.url}")
                 Log.d(TAG, "📱 Network type: ${if (NetworkUtil.isWiFiConnected(context)) "WiFi" else "Mobile"}")
                 
+                // Use proxy URL for assets from ASSETS_BASE_URL
+                val downloadUrl = if (video.url.startsWith(ApiConfig.ASSETS_BASE_URL)) {
+                    Log.d(TAG, "🎯 Video ${video.id} - startTime: ${video.startTime}, duration: ${video.duration}")
+                    val proxyUrl = ApiConfig.getProxyUrl(
+                        video.url,
+                        start = video.startTime,
+                        duration = video.duration
+                    )
+                    Log.d(TAG, "🔄 Using proxy URL: $proxyUrl")
+                    proxyUrl
+                } else {
+                    video.url
+                }
+                
                 // Debug URL details
-                val url = URL(video.url)
+                val url = URL(downloadUrl)
                 Log.d(TAG, "🌐 URL Protocol: ${url.protocol}")
                 Log.d(TAG, "🌐 URL Host: ${url.host}")
                 Log.d(TAG, "🌐 URL Port: ${url.port}")
                 Log.d(TAG, "🌐 URL Path: ${url.path}")
                 
-                // Extract filename from URL
-                val fileName = extractFilenameFromUrl(video.url)
+                // Extract filename from original URL but we'll adjust extension based on content-type
+                val originalFileName = extractFilenameFromUrl(video.url)
+                val fileName = if (downloadUrl != video.url) {
+                    // If using proxy, assume it's video content and use .mp4 extension
+                    val baseName = originalFileName.substringBeforeLast('.')
+                    "${baseName}.mp4"
+                } else {
+                    originalFileName
+                }
                 
                 // Get movies directory
                 val moviesDir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "")
@@ -360,8 +382,8 @@ class VideoDownloadManager(private val context: Context) {
                 val connection = url.openConnection() as HttpURLConnection
                 
                 // Configure connection for real devices
-                connection.connectTimeout = 30000
-                connection.readTimeout = 60000 // Increased for large video files
+                connection.connectTimeout = ApiConfig.Timeouts.DOWNLOAD_CONNECT_TIMEOUT // 5 minutes
+                connection.readTimeout = ApiConfig.Timeouts.DOWNLOAD_READ_TIMEOUT // 5 minutes for large video files
                 connection.requestMethod = "GET"
                 
                 // Add essential headers for real device compatibility
@@ -520,8 +542,29 @@ class VideoDownloadManager(private val context: Context) {
                 
                 Log.d(TAG, "🎬 Synchronously downloading video: ${video.id} from ${video.url}")
                 
-                // Extract filename from URL
-                val fileName = extractFilenameFromUrl(video.url)
+                // Use proxy URL for assets from ASSETS_BASE_URL
+                val downloadUrl = if (video.url.startsWith(ApiConfig.ASSETS_BASE_URL)) {
+                    Log.d(TAG, "🎯 Video ${video.id} - startTime: ${video.startTime}, duration: ${video.duration}")
+                    val proxyUrl = if (video.startTime != null && video.duration != null) {
+                        ApiConfig.getProxyUrl(video.url, start = video.startTime, duration = video.duration)
+                    } else {
+                        ApiConfig.getProxyUrl(video.url)
+                    }
+                    Log.d(TAG, "🔄 Using proxy URL: $proxyUrl")
+                    proxyUrl
+                } else {
+                    video.url
+                }
+                
+                // Extract filename from original URL but we'll adjust extension based on content-type
+                val originalFileName = extractFilenameFromUrl(video.url)
+                val fileName = if (downloadUrl != video.url) {
+                    // If using proxy, assume it's video content and use .mp4 extension
+                    val baseName = originalFileName.substringBeforeLast('.')
+                    "${baseName}.mp4"
+                } else {
+                    originalFileName
+                }
                 
                 // Get movies directory
                 val moviesDir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "")
@@ -543,12 +586,12 @@ class VideoDownloadManager(private val context: Context) {
                 }
                 
                 // Download the video file with proper headers
-                val url = URL(video.url)
+                val url = URL(downloadUrl)
                 val connection = url.openConnection() as HttpURLConnection
                 
                 // Configure connection
-                connection.connectTimeout = 30000
-                connection.readTimeout = 60000
+                connection.connectTimeout = ApiConfig.Timeouts.DOWNLOAD_CONNECT_TIMEOUT // 5 minutes
+                connection.readTimeout = ApiConfig.Timeouts.DOWNLOAD_READ_TIMEOUT // 5 minutes
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("User-Agent", "StandeeAds/1.0 (Android)")
                 connection.setRequestProperty("Accept", "*/*")

@@ -9,6 +9,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
+import com.vnlook.tvsongtao.config.ApiConfig
 import com.vnlook.tvsongtao.model.DeviceInfo
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -36,8 +37,7 @@ class DeviceRepositoryImpl(private val context: Context) : DeviceRepository {
      */
     override suspend fun createDevice(deviceInfo: DeviceInfo): DeviceInfo? {
         try {
-            val apiUrl = "https://ledgiaodich.vienthongtayninh.vn:3030/items/play_device"
-            val url = URL(apiUrl)
+            val url = URL(ApiConfig.DEVICE_URL)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json")
@@ -92,8 +92,7 @@ class DeviceRepositoryImpl(private val context: Context) : DeviceRepository {
      */
     override suspend fun updateDevice(deviceInfo: DeviceInfo): DeviceInfo? {
         try {
-            val apiUrl = "https://ledgiaodich.vienthongtayninh.vn:3030/items/play_device/${deviceInfo.id}"
-            val url = URL(apiUrl)
+            val url = URL(ApiConfig.getDeviceUpdateUrl(deviceInfo.id.toString()))
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "PATCH"
             connection.setRequestProperty("Content-Type", "application/json")
@@ -183,8 +182,7 @@ class DeviceRepositoryImpl(private val context: Context) : DeviceRepository {
      */
     override suspend fun getListDevices(): List<DeviceInfo> {
         try {
-            val apiUrl = "https://ledgiaodich.vienthongtayninh.vn:3030/items/play_device"
-            val url = URL(apiUrl)
+            val url = URL(ApiConfig.DEVICE_URL)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.setRequestProperty("Accept", "application/json")
