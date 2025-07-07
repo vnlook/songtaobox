@@ -165,24 +165,34 @@ class DataManager(private val context: Context) {
         try {
             Log.d(TAG, "Updating download status for video $videoUrl to $isDownloaded with path: $localPath")
             val videos = getVideos().toMutableList()
+            var videoFound = false
+            
             for (video in videos) {
                 if (video.url == videoUrl) {
-                    video.isDownloaded = isDownloaded
-                    video.localPath = localPath
+                    // ✅ FIX: Create new Video object preserving ALL existing fields
+                    val updatedVideo = video.copy(
+                        isDownloaded = isDownloaded,
+                        localPath = localPath ?: video.localPath
+                        // startTime và duration automatically preserved by copy()
+                    )
+                    
+                    // Replace the video in list
+                    val index = videos.indexOf(video)
+                    videos[index] = updatedVideo
+                    videoFound = true
+                    
+                    Log.d(TAG, "✅ Updated video: URL=${updatedVideo.url}, startTime=${updatedVideo.startTime}, duration=${updatedVideo.duration}, isDownloaded=${updatedVideo.isDownloaded}")
+                    break
                 }
             }
-            saveVideos(videos)
-//            val index = videos.indexOfFirst { it.id == videoId }
-//            if (index != -1) {
-//                videos[index] = videos[index].copy(
-//                    isDownloaded = isDownloaded,
-//                    localPath = localPath ?: videos[index].localPath
-//                )
-//                saveVideos(videos)
-//                Log.d(TAG, "Video $videoUrl status updated successfully")
-//            } else {
-//                Log.w(TAG, "Video $videoUrl not found in the list")
-//            }
+            
+            if (videoFound) {
+                saveVideos(videos)
+                Log.d(TAG, "✅ Video $videoUrl status updated successfully")
+            } else {
+                Log.w(TAG, "⚠️ Video $videoUrl not found in the list")
+            }
+            
         } catch (e: Exception) {
             Log.e(TAG, "Error updating video status: ${e.message}")
             e.printStackTrace()

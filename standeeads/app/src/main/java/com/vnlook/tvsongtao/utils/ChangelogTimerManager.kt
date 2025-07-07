@@ -40,7 +40,11 @@ object ChangelogTimerManager {
      */
     fun initialize(context: Application) {
         appContext = context.applicationContext
-        startGlobalTimer()
+//        startGlobalTimer()
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            startGlobalTimer()
+        }, 25_000L) // 15 giây
     }
     
     /**
@@ -82,7 +86,10 @@ object ChangelogTimerManager {
                                         Log.i(TAG, "✅ Updates completed successfully, restarting app...")
                                         
                                         // STEP 4: Restart app on main thread
-                                        Handler(Looper.getMainLooper()).post {
+//                                        Handler(Looper.getMainLooper()).post {
+//                                            restartApp()
+//                                        }
+                                        withContext(Dispatchers.Main) {
                                             restartApp()
                                         }
                                     } else {

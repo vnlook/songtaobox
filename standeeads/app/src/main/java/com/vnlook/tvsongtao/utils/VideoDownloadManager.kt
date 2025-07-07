@@ -334,6 +334,9 @@ class VideoDownloadManager(private val context: Context) {
                         start = video.startTime,
                         duration = video.duration
                     )
+                    if (video.duration == null) {
+                        Log.d(TAG, "🔄 Using proxy URL Check: $proxyUrl")
+                    }
                     Log.d(TAG, "🔄 Using proxy URL: $proxyUrl")
                     proxyUrl
                 } else {
@@ -545,10 +548,9 @@ class VideoDownloadManager(private val context: Context) {
                 // Use proxy URL for assets from ASSETS_BASE_URL
                 val downloadUrl = if (video.url.startsWith(ApiConfig.ASSETS_BASE_URL)) {
                     Log.d(TAG, "🎯 Video ${video.id} - startTime: ${video.startTime}, duration: ${video.duration}")
-                    val proxyUrl = if (video.startTime != null && video.duration != null) {
-                        ApiConfig.getProxyUrl(video.url, start = video.startTime, duration = video.duration)
-                    } else {
-                        ApiConfig.getProxyUrl(video.url)
+                    val proxyUrl = ApiConfig.getProxyUrl(video.url, start = video.startTime, duration = video.duration)
+                    if (video.duration == null) {
+                        Log.d(TAG, "🔄 Using proxy URL check: $proxyUrl")
                     }
                     Log.d(TAG, "🔄 Using proxy URL: $proxyUrl")
                     proxyUrl

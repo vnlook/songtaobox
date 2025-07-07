@@ -9,8 +9,8 @@ object ApiConfig {
     /**
      * Base URL for all VNL API endpoints
      */
-//    private const val BASE_URL = "https://ledgiaodich.vienthongtayninh.vn:3030"
-    private const val BASE_URL = "https://songtao.vnlook.com"
+    private const val BASE_URL = "https://ledgiaodich.vienthongtayninh.vn:3030"
+//    private const val BASE_URL = "https://songtao.vnlook.com"
 
     /**
      * API endpoint for media playlist
@@ -61,7 +61,7 @@ object ApiConfig {
         const val USER_AGENT = "Apidog/1.0.0 (https://apidog.com)"
         const val ACCEPT = "*/*"
         const val CONNECTION = "keep-alive"
-        const val HOST = "songtao.vnlook.com"
+        const val HOST = "ledgiaodich.vienthongtayninh.vn:3030"
     }
     
     /**

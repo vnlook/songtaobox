@@ -111,11 +111,11 @@ class ChangelogUtil(private val context: Context, private val changelogRepositor
             Log.d(TAG, "🆕 Latest changelog date: ${latestChangelog.date_created}")
             Log.d(TAG, "💾 Saved last time change: $savedLastTimeChange")
             
-            // If there's no saved last time change, save the current one and return false
+            // If there's no saved last time change, this is first launch - should trigger download
             if (savedLastTimeChange == null) {
-                Log.d(TAG, "🔄 First time checking - saving current changelog date")
+                Log.d(TAG, "🔄 First time checking - triggering initial download")
                 updateLastTimeChange(latestChangelog)
-                return false
+                return true
             }
             
             // Compare the last time change with the one from the API
